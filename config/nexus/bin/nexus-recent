@@ -1,0 +1,18 @@
+#!/bin/bash
+# Prints the most recently used files as a JSON array, newest first, from
+# GTK's recently-used list (~/.local/share/recently-used.xbel). Files that no
+# longer exist are skipped.   nexus-recent [count]
+
+count=${1:-6}
+xbel="${XDG_DATA_HOME:-$HOME/.local/share}/recently-used.xbel"
+[[ -r $xbel ]] || { echo "[]"; exit 0; }
+
+grep -o '<bookmark [^>]*>' "$xbel" |
+  sed -n 's/.*href="file:\/\/\([^"]*\)".*modified="\([^"]*\)".*/\2\t\1/p' |
+  sort -r |
+  while IFS=$'\t' read -r modified path; do
+    path=$(printf '%b' "${path//%/\\x}")
+    [[ -f $path ]] && printf '%s\t%s\n' "$modified" "$path"
+  done |
+  head -n "$count" |
+  jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {modified: .[0], path: .[1]})'

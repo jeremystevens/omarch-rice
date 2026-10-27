@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "nexus.tag",
+  "name": "NEXUS Tag",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "NEXUS tag: opens the command menu",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": { "displayName": "NEXUS Tag", "description": "NEXUS tag: opens the command menu", "category": "System", "allowMultiple": false, "defaultSection": "left" }
+}

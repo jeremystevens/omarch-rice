@@ -1,0 +1,132 @@
+#!/bin/bash
+# NEXUS developer helper. Reads projects without running any of their code.
+#
+#   nexus-dev info DIR...        JSON: git branch/status and tasks found in
+#                                manifests, one object per directory
+#   nexus-dev sessions           JSON: tmux sessions (name, windows, path)
+#   nexus-dev versions           JSON: versions of the main dev tools
+#   nexus-dev term DIR [NAME]    terminal attached to tmux session NAME in DIR
+#   nexus-dev edit DIR           nvim in DIR
+#   nexus-dev files DIR          file manager in DIR
+#   nexus-dev git DIR            lazygit in DIR
+#   nexus-dev attach SESSION     terminal attached to an existing tmux session
+#
+# Tasks are discovered by parsing manifests (package.json scripts, uv
+# projects, Makefile targets, compose files). Nothing in the project runs
+# during discovery. Every path is passed as a separate argument, so
+# directories with spaces work.
+
+set -uo pipefail
+
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
+launch() { setsid uwsm-app -- "$@" >/dev/null 2>&1 & }
+
+# tmux session names may not contain '.' or ':'
+session_name() { local n=${1//[.:]/-}; printf '%s' "${n:-project}"; }
+
+git_json() {
+  local dir=$1
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo null; return; }
+  local branch="" oid="" ahead=0 behind=0 staged=0 unstaged=0 untracked=0 conflicted=0 upstream=""
+  while IFS= read -r line; do
+    case $line in
+      "# branch.oid "*) oid=${line#"# branch.oid "} ;;
+      "# branch.head "*) branch=${line#"# branch.head "} ;;
+      "# branch.upstream "*) upstream=${line#"# branch.upstream "} ;;
+      "# branch.ab "*) read -r _ _ a b <<<"$line"; ahead=${a#+}; behind=${b#-} ;;
+      "1 "* | "2 "*)
+        local xy=${line:2:2}
+        [[ ${xy:0:1} != "." ]] && staged=$((staged + 1))
+        [[ ${xy:1:1} != "." ]] && unstaged=$((unstaged + 1)) ;;
+      "u "*) conflicted=$((conflicted + 1)) ;;
+      "? "*) untracked=$((untracked + 1)) ;;
+    esac
+  done < <(git --no-optional-locks -C "$dir" status --porcelain=v2 --branch 2>/dev/null)
+  jq -nc --arg branch "$branch" --arg oid "${oid:0:7}" --arg upstream "$upstream" \
+    --argjson ahead "${ahead:-0}" --argjson behind "${behind:-0}" --argjson staged "$staged" \
+    --argjson unstaged "$unstaged" --argjson untracked "$untracked" --argjson conflicted "$conflicted" \
+    '{branch: $branch, detached: ($branch == "(detached)"), commit: $oid, upstream: $upstream,
+      ahead: $ahead, behind: $behind, staged: $staged, unstaged: $unstaged,
+      untracked: $untracked, conflicted: $conflicted,
+      clean: ($staged + $unstaged + $untracked + $conflicted == 0)}'
+}
+
+# One task: id, label, where it came from, and the exact argv NEXUS would run.
+task() { jq -nc --arg id "$1" --arg label "$2" --arg source "$3" '{id: $id, label: $label, source: $source, argv: $ARGS.positional}' --args "${@:4}"; }
+
+tasks_json() {
+  local dir=$1
+  {
+    if [[ -f $dir/package.json ]]; then
+      local runner=npm
+      [[ -f $dir/pnpm-lock.yaml ]] && runner=pnpm
+      [[ -f $dir/yarn.lock ]] && runner=yarn
+      [[ -f $dir/bun.lockb || -f $dir/bun.lock ]] && runner=bun
+      jq -r '(.scripts // {}) | keys[]' "$dir/package.json" 2>/dev/null | while IFS= read -r s; do
+        task "npm:$s" "$s" "package.json · $runner" "$runner" run "$s"
+      done
+    fi
+    if [[ -f $dir/pyproject.toml && -f $dir/uv.lock ]]; then
+      # [project.scripts] entries, then tools the project itself depends on.
+      awk '/^\[project\.scripts\]/{on=1; next} /^\[/{on=0} on && /^[A-Za-z0-9_.-]+[[:space:]]*=/{sub(/[[:space:]]*=.*/, ""); print}' "$dir/pyproject.toml" |
+        while IFS= read -r s; do task "py:$s" "$s" "pyproject · uv" uv run "$s"; done
+      grep -qE '(^|[^A-Za-z0-9_-])pytest([^A-Za-z0-9_-]|$)' "$dir/pyproject.toml" && task "py:pytest" "test" "pyproject · uv" uv run pytest
+      if grep -qE '(^|[^A-Za-z0-9_-])ruff([^A-Za-z0-9_-]|$)|^\[tool\.ruff' "$dir/pyproject.toml"; then
+        task "py:ruff-check" "lint" "pyproject · uv" uv run ruff check .
+        task "py:ruff-format" "format" "pyproject · uv" uv run ruff format .
+      fi
+    fi
+    local mk
+    for mk in GNUmakefile Makefile makefile; do
+      [[ -f $dir/$mk ]] || continue
+      grep -oE '^[A-Za-z0-9][A-Za-z0-9_./-]*:([^=]|$)' "$dir/$mk" | sed 's/:.*//' | sort -u | head -20 |
+        while IFS= read -r t; do task "make:$t" "$t" "$mk" make "$t"; done
+      break
+    done
+    local cf
+    for cf in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+      [[ -f $dir/$cf ]] || continue
+      task "compose:up" "compose up" "$cf · podman" podman compose up
+      task "compose:down" "compose down" "$cf · podman" podman compose down
+      break
+    done
+  } | jq -sc '.[0:30]'
+}
+
+cmd=${1:-}
+shift || true
+case $cmd in
+  info)
+    for dir in "$@"; do
+      if [[ -d $dir ]]; then
+        jq -nc --arg dir "$dir" --argjson git "$(git_json "$dir")" --argjson tasks "$(tasks_json "$dir")" \
+          '{dir: $dir, exists: true, git: $git, tasks: $tasks}'
+      else
+        jq -nc --arg dir "$dir" '{dir: $dir, exists: false, git: null, tasks: []}'
+      fi
+    done | jq -sc '.'
+    ;;
+  sessions)
+    tmux list-sessions -F '#{session_name}	#{session_windows}	#{session_attached}	#{session_path}	#{session_activity}' 2>/dev/null |
+      jq -Rsc 'split("\n") | map(select(length > 0) | split("\t")
+        | {name: .[0], windows: (.[1] | tonumber), attached: (.[2] | tonumber), path: .[3], activity: (.[4] | tonumber)})'
+    ;;
+  versions)
+    v() { "$@" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; }
+    jq -nc --arg git "$(v git --version)" --arg node "$(v node --version)" --arg pnpm "$(v pnpm --version)" \
+      --arg python "$(v python3 --version)" --arg uv "$(v uv --version)" --arg ruff "$(v ruff --version)" \
+      --arg nvim "$(v nvim --version)" --arg tmux "$(v tmux -V)" --arg podman "$(v podman --version)" \
+      --arg gh "$(v gh --version)" --arg sqlite "$(v sqlite3 --version)" --arg http "$(v http --version)" \
+      '$ARGS.named'
+    ;;
+  term)
+    dir=$1; name=$(session_name "${2:-$(basename -- "$dir")}")
+    launch xdg-terminal-exec --dir="$dir" tmux new-session -A -s "$name" -c "$dir"
+    ;;
+  attach) launch xdg-terminal-exec tmux attach-session -t "=$1" ;;
+  edit) launch xdg-terminal-exec --dir="$1" nvim . ;;
+  files) launch nautilus --new-window "$1" ;;
+  git) launch xdg-terminal-exec --dir="$1" lazygit ;;
+  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

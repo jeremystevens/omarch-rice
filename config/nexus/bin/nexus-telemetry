@@ -1,0 +1,122 @@
+#!/bin/bash
+# Streams NEXUS telemetry as one JSON object per line, read only from /proc
+# and /sys. Runs only while a consumer holds it open: the toolbox (1 s) or the
+# status line (5 s). Fields that the hardware does not expose are null.
+#
+#   nexus-telemetry [interval-seconds] [--once]
+
+interval=${1:-1}
+once=${2:-}
+
+read_first() { [[ -r $1 ]] && read -r v <"$1" && echo "$v"; }
+
+find_hwmon() {
+  local h
+  for h in /sys/class/hwmon/hwmon*; do
+    [[ $(read_first "$h/name") == "$1" ]] && { echo "$h"; return; }
+  done
+}
+
+CORETEMP=$(find_hwmon coretemp)
+CROS_EC=$(find_hwmon cros_ec)
+BAT=/sys/class/power_supply/BAT0
+AC=/sys/class/power_supply/AC
+THREADS=$(nproc)
+
+pkg_temp() {
+  local f label
+  if [[ -n $CORETEMP ]]; then
+    for f in "$CORETEMP"/temp*_label; do
+      label=$(read_first "$f")
+      [[ $label == Package* ]] && { echo $(( $(read_first "${f%_label}_input") / 1000 )); return; }
+    done
+  fi
+  for f in /sys/class/thermal/thermal_zone*; do
+    [[ $(read_first "$f/type") == x86_pkg_temp ]] && { echo $(( $(read_first "$f/temp") / 1000 )); return; }
+  done
+  echo null
+}
+
+fan_rpm() {
+  [[ -n $CROS_EC && -r $CROS_EC/fan1_input ]] || { echo null; return; }
+  [[ $(read_first "$CROS_EC/fan1_fault") == 1 ]] && { echo null; return; }
+  read_first "$CROS_EC/fan1_input"
+}
+
+cpu_mhz() {
+  local sum=0 n=0 f
+  for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do
+    [[ -r $f ]] || continue
+    sum=$(( sum + $(read_first "$f") )); n=$(( n + 1 ))
+  done
+  (( n > 0 )) && echo $(( sum / n / 1000 )) || echo null
+}
+
+iface() { ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1; }
+
+prev_idle=0; prev_total=0; prev_rx=0; prev_tx=0; prev_t=0; tick=0
+ssid=""; ip_addr=""; dev=""
+
+while :; do
+  # CPU: delta of busy vs total jiffies since the previous sample.
+  read -r _ user nice system idle iowait irq softirq steal _ </proc/stat
+  idle_all=$(( idle + iowait )); total=$(( user + nice + system + idle + iowait + irq + softirq + steal ))
+  cpu=null
+  if (( prev_total > 0 && total > prev_total )); then
+    cpu=$(( 100 * ( (total - prev_total) - (idle_all - prev_idle) ) / (total - prev_total) ))
+  fi
+  prev_idle=$idle_all; prev_total=$total
+
+  read -r load _ </proc/loadavg
+  mem_total=$(awk '/^MemTotal/{print $2; exit}' /proc/meminfo)
+  mem_avail=$(awk '/^MemAvailable/{print $2; exit}' /proc/meminfo)
+
+  # Network identity changes rarely; refresh it every 10 samples.
+  if (( tick % 10 == 0 )); then
+    dev=$(iface)
+    ip_addr=$(ip -4 -o addr show dev "$dev" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+    ssid=""
+    [[ -n $dev && -d /sys/class/net/$dev/wireless ]] && ssid=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')
+  fi
+
+  now=$(date +%s%N)
+  rx=null; tx=null; rx_rate=null; tx_rate=null; dbm=null
+  if [[ -n $dev && -r /sys/class/net/$dev/statistics/rx_bytes ]]; then
+    rx=$(read_first /sys/class/net/$dev/statistics/rx_bytes)
+    tx=$(read_first /sys/class/net/$dev/statistics/tx_bytes)
+    if (( prev_t > 0 && rx >= prev_rx )); then
+      dt=$(( (now - prev_t) / 1000000 )); (( dt < 1 )) && dt=1
+      rx_rate=$(( (rx - prev_rx) * 1000 / dt )); tx_rate=$(( (tx - prev_tx) * 1000 / dt ))
+    fi
+    prev_rx=$rx; prev_tx=$tx; prev_t=$now
+    dbm=$(awk -v d="$dev:" '$1==d{gsub(/\./,"",$4); print $4}' /proc/net/wireless)
+    [[ -z $dbm ]] && dbm=null
+  fi
+
+  bat=null; bat_status=null; bat_minutes=null; on_ac=null
+  if [[ -r $BAT/capacity ]]; then
+    bat=$(read_first $BAT/capacity)
+    bat_status="\"$(read_first $BAT/status)\""
+    cur=$(read_first $BAT/current_now); now_c=$(read_first $BAT/charge_now); full=$(read_first $BAT/charge_full)
+    if [[ -n $cur ]] && (( cur > 0 )); then
+      case $bat_status in
+        '"Discharging"') bat_minutes=$(( now_c * 60 / cur )) ;;
+        '"Charging"') bat_minutes=$(( (full - now_c) * 60 / cur )) ;;
+      esac
+    fi
+  fi
+  [[ -r $AC/online ]] && on_ac=$([[ $(read_first $AC/online) == 1 ]] && echo true || echo false)
+
+  read -r up _ </proc/uptime
+
+  printf '{"ts":%s,"cpu":%s,"threads":%s,"mhz":%s,"load":%s,"memTotalKb":%s,"memAvailKb":%s,"tempC":%s,"fanRpm":%s,' \
+    "$(( now / 1000000 ))" "$cpu" "$THREADS" "$(cpu_mhz)" "$load" "${mem_total:-null}" "${mem_avail:-null}" "$(pkg_temp)" "$(fan_rpm)"
+  printf '"iface":"%s","ssid":"%s","ip":"%s","dbm":%s,"rxRate":%s,"txRate":%s,' \
+    "$dev" "${ssid//\"/}" "$ip_addr" "$dbm" "$rx_rate" "$tx_rate"
+  printf '"battery":%s,"batteryStatus":%s,"batteryMinutes":%s,"onAc":%s,"uptimeS":%s}\n' \
+    "$bat" "$bat_status" "$bat_minutes" "$on_ac" "${up%.*}"
+
+  [[ $once == --once ]] && (( tick >= 1 )) && exit 0
+  tick=$(( tick + 1 ))
+  sleep "$interval"
+done

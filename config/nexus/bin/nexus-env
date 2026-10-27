@@ -1,0 +1,32 @@
+#!/bin/bash
+# Sets up the local environment-file workflow for a project, without ever
+# printing values:
+#   - creates .env.example from the NEXUS template if the project has none
+#   - creates .env from .env.example (mode 600) if .env does not exist
+#   - makes sure the project's .gitignore excludes .env files
+#   - warns if git already tracks a .env file
+# usage: nexus-env [project-dir]     (paths with spaces are fine)
+set -euo pipefail
+dir=${1:-$PWD}
+cd -- "$dir"
+template="$HOME/.config/nexus/templates/env.example"
+
+[[ -e .env.example ]] || { cp -- "$template" .env.example; echo "created .env.example"; }
+if [[ ! -e .env ]]; then
+  ( umask 077; cp -- .env.example .env )
+  echo "created .env (only you can read it; fill in real values there)"
+else
+  chmod 600 .env
+  echo ".env exists; permissions set to 600"
+fi
+
+if ! grep -qxF '.env' .gitignore 2>/dev/null; then
+  printf '%s\n' '' '# local environment (NEXUS)' '.env' '.env.*' '!.env.example' >> .gitignore
+  echo "added .env rules to .gitignore"
+fi
+
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tracked=$(git ls-files -- '.env' '.env.*' ':!:.env.example' ':!:.env.sample' || true)
+  [[ -n $tracked ]] && echo "WARNING: git already tracks: $tracked  (remove with: git rm --cached <file>)"
+fi
+exit 0

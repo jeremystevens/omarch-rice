@@ -1,0 +1,118 @@
+#!/bin/bash
+# NEXUS task runner. Every task runs in its own window of the tmux session
+# "nexus-tasks", so its output stays visible and survives the menu closing.
+# Windows stay open after the command exits (remain-on-exit), showing the
+# exit status, until cleared.
+#
+#   nexus-task start DIR PROJECT LABEL -- ARGV...   run ARGV in DIR, print window id
+#   nexus-task list                                 JSON: tasks, state, server links
+#   nexus-task tail ID [LINES]                      last LINES of output (default 14)
+#   nexus-task stop ID                              Ctrl-C, then TERM, then KILL
+#   nexus-task clear                                close windows of finished tasks
+#   nexus-task attach ID                            terminal showing that task
+#
+# A server link is reported only when a localhost URL printed by the task
+# matches a TCP port that a process of that task is listening on.
+
+set -uo pipefail
+SESSION=nexus-tasks
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
+have_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
+
+descendants() {
+  local pid=$1 child
+  echo "$pid"
+  for child in $(ps -o pid= --ppid "$pid" 2>/dev/null); do descendants "$child"; done
+}
+
+listening_ports() {
+  local pids
+  pids=" $(descendants "$1" | tr '\n' ' ') "
+  ss -ltnpH 2>/dev/null | while read -r _ _ _ local _ users; do
+    local pid
+    while read -r pid; do
+      [[ $pids == *" $pid "* ]] && { echo "${local##*:}"; break; }
+    done < <(grep -oE 'pid=[0-9]+' <<<"$users" | cut -d= -f2)
+  done | sort -un
+}
+
+cmd=${1:-}
+shift || true
+case $cmd in
+  start)
+    dir=$1 project=$2 label=$3; shift 3
+    [[ ${1:-} == "--" ]] && shift
+    [[ -d $dir ]] || { echo "no such directory: $dir" >&2; exit 1; }
+    name="$project:$label"
+    if have_session; then
+      id=$(tmux new-window -d -P -F '#{window_id}' -t "=$SESSION:" -n "$name" -c "$dir" -e "PATH=$PATH" -- "$@")
+    else
+      id=$(tmux new-session -d -P -F '#{window_id}' -s "$SESSION" -n "$name" -c "$dir" -e "PATH=$PATH" -x 200 -y 50 -- "$@")
+      tmux set-option -t "$id" history-limit 10000 >/dev/null
+    fi
+    tmux set-option -w -t "$id" remain-on-exit on >/dev/null
+    tmux set-option -w -t "$id" @nexus_project "$project" >/dev/null
+    tmux set-option -w -t "$id" @nexus_task "$label" >/dev/null
+    tmux set-option -w -t "$id" @nexus_dir "$dir" >/dev/null
+    tmux set-option -w -t "$id" @nexus_cmd "$*" >/dev/null
+    tmux set-option -w -t "$id" @nexus_started "$(date +%s)" >/dev/null
+    echo "$id"
+    ;;
+  list)
+    have_session || { echo "[]"; exit 0; }
+    # Fields are separated by US (0x1f): a tab would collapse empty fields
+    # (a running task has no exit status) and shift every column after it.
+    us=$'\x1f'
+    tmux list-windows -t "=$SESSION" -F "#{window_id}$us#{pane_pid}$us#{pane_dead}$us#{pane_dead_status}$us#{@nexus_project}$us#{@nexus_task}$us#{@nexus_dir}$us#{@nexus_cmd}$us#{@nexus_started}" |
+      while IFS=$us read -r id pid dead status project label dir command started; do
+        url="" ports="[]"
+        if [[ $dead != 1 ]]; then
+          mapfile -t open < <(listening_ports "$pid")
+          ports=$(printf '%s\n' "${open[@]}" | jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)')
+          for candidate in $(tmux capture-pane -p -J -t "$id" -S -300 2>/dev/null |
+              grep -oE 'https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):[0-9]+[^[:space:]"'"'"')]*' | tac); do
+            port=$(sed -E 's#^https?://[^/]*:([0-9]+).*#\1#' <<<"$candidate")
+            if printf '%s\n' "${open[@]}" | grep -qx "$port"; then
+              url=${candidate/0.0.0.0/localhost}; url=${url/\[::\]/localhost}; break
+            fi
+          done
+        fi
+        jq -nc --arg id "$id" --arg project "$project" --arg label "$label" --arg dir "$dir" --arg command "$command" \
+          --argjson running "$([[ $dead == 1 ]] && echo false || echo true)" \
+          --arg status "$status" --arg started "${started:-0}" --arg url "$url" --argjson ports "$ports" \
+          '{id: $id, project: $project, label: $label, dir: $dir, command: $command, running: $running,
+            exitCode: (if $running then null else ($status | tonumber? // null) end),
+            started: ($started | tonumber), url: $url, ports: $ports}'
+      done | jq -sc '.'
+    ;;
+  tail)
+    tmux capture-pane -p -J -t "$1" -S "-${2:-14}" 2>/dev/null | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' | tail -n "${2:-14}"
+    ;;
+  stop)
+    id=$1
+    pid=$(tmux display-message -p -t "$id" '#{pane_pid}' 2>/dev/null) || exit 1
+    [[ $(tmux display-message -p -t "$id" '#{pane_dead}') == 1 ]] && exit 0
+    tmux send-keys -t "$id" C-c
+    for _ in 1 2 3 4 5 6; do
+      sleep 0.5
+      [[ $(tmux display-message -p -t "$id" '#{pane_dead}' 2>/dev/null) == 1 ]] && exit 0
+    done
+    mapfile -t tree < <(descendants "$pid")
+    kill -TERM "${tree[@]}" 2>/dev/null
+    sleep 2
+    [[ $(tmux display-message -p -t "$id" '#{pane_dead}' 2>/dev/null) == 1 ]] || kill -KILL "${tree[@]}" 2>/dev/null
+    exit 0
+    ;;
+  clear)
+    have_session || exit 0
+    tmux list-windows -t "=$SESSION" -F '#{window_id} #{pane_dead}' | while read -r id dead; do
+      [[ $dead == 1 ]] && tmux kill-window -t "$id"
+    done
+    exit 0
+    ;;
+  attach)
+    setsid uwsm-app -- xdg-terminal-exec tmux attach-session -t "=$SESSION" \; select-window -t "$1" >/dev/null 2>&1 &
+    ;;
+  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "nexus.readouts",
+  "name": "NEXUS Readouts",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "Compact cpu, memory, temperature, battery and network text",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": { "displayName": "NEXUS Readouts", "description": "Compact cpu, memory, temperature, battery and network text", "category": "System", "allowMultiple": false, "defaultSection": "right" }
+}

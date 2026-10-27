@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "nexus.rail",
+  "name": "NEXUS rail",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "Collapsible workbench rail: projects, windows, recent files, keys",
+  "kinds": ["service"],
+  "entryPoints": { "service": "Rail.qml" }
+}

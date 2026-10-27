@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "nexus.workspaces",
+  "name": "NEXUS Workspaces",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "Workspaces 1-5 with active, occupied, empty and urgent states",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": { "displayName": "NEXUS Workspaces", "description": "Workspaces 1-5 with active, occupied, empty and urgent states", "category": "Compositor", "allowMultiple": false, "defaultSection": "left" }
+}

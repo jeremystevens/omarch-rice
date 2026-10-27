@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "nexus.command",
+  "name": "NEXUS command",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "Command line and single-letter command menu with search mode",
+  "kinds": ["service"],
+  "entryPoints": { "service": "Command.qml" }
+}

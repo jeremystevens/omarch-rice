@@ -1,0 +1,35 @@
+# NEXUS: charcoal, phosphor green, restrained amber, off-white.
+mode = "dark"
+
+accent = "#4dff88"
+selection = "#163d27"
+muted = "#2b2f2c"
+
+background = "#121413"
+dark_background = "#0c0d0d"
+darker_background = "#080909"
+lighter_background = "#181a19"
+
+foreground = "#e9e6dc"
+dark_foreground = "#868980"
+light_foreground = "#cfcbc0"
+bright_foreground = "#f7f5ee"
+
+hyprland_active_border = "rgba(4dff88ff)"
+hyprland_inactive_border = "rgba(2b2f2cff)"
+
+red = "#e5534b"
+yellow = "#ffb347"
+orange = "#ff9a3c"
+green = "#3ccf6e"
+cyan = "#5fc9b4"
+blue = "#7fa3c4"
+magenta = "#b29bd0"
+brown = "#6d5a3a"
+
+bright_red = "#ff6f66"
+bright_yellow = "#ffcf7a"
+bright_green = "#4dff88"
+bright_cyan = "#8ae3d2"
+bright_blue = "#a8c3dc"
+bright_magenta = "#cdbbe4"

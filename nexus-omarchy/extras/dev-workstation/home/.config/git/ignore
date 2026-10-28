@@ -1,0 +1,14 @@
+# Global ignores (git reads this file automatically). Added by NEXUS setup.
+# Local environment and credentials never belong in a repository.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+.envrc.local
+.netrc
+# Editor and OS noise
+.DS_Store
+*.swp

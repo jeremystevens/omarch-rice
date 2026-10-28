@@ -1,0 +1,86 @@
+{
+  "bar": {
+    "centerAnchor": "",
+    "layout": {
+      "left": [
+        {
+          "id": "nexus.tag"
+        },
+        {
+          "id": "nexus.workspaces"
+        },
+        {
+          "id": "omarchy.active-window"
+        },
+        {
+          "id": "omarchy.indicators"
+        }
+      ],
+      "center": [],
+      "right": [
+        {
+          "id": "omarchy.tray"
+        },
+        {
+          "id": "omarchy.keyboard-layout"
+        },
+        {
+          "id": "omarchy.system-update"
+        },
+        {
+          "id": "omarchy.weather"
+        },
+        {
+          "id": "omarchy.agents"
+        },
+        {
+          "id": "omarchy.bluetooth"
+        },
+        {
+          "id": "omarchy.network"
+        },
+        {
+          "id": "omarchy.audio"
+        },
+        {
+          "id": "omarchy.monitor"
+        },
+        {
+          "id": "omarchy.power"
+        },
+        {
+          "id": "nexus.readouts"
+        },
+        {
+          "id": "omarchy.clock",
+          "format": "h:mm AP",
+          "formatAlt": "d MMMM 'W'ww yyyy"
+        }
+      ]
+    },
+    "position": "bottom",
+    "transparent": true
+  },
+  "idle": {
+    "lock": 300,
+    "screensaver": 150
+  },
+  "plugins": [
+    {
+      "id": "nexus.notifications"
+    },
+    {
+      "id": "nexus.rail"
+    },
+    {
+      "id": "nexus.command"
+    }
+  ],
+  "version": 1,
+  "disabledPlugins": [
+    "omarchy.notifications"
+  ],
+  "cloneSourceRestores": [
+    "nexus.notifications"
+  ]
+}

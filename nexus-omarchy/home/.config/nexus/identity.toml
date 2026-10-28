@@ -1,0 +1,12 @@
+# NEXUS: what the interface shows about you.
+# Only what you write here is shown. Empty values stay hidden.
+# Saving this file updates the rail and the command menu.
+
+[identity]
+name    = "NEXUS"
+tagline = ""
+
+# Projects appear in the rail and under `p` in the command menu.
+# Add them from the menu (p, then a) or with `nexus-project add FOLDER`.
+# name = "path"   (~ is your home folder)
+[projects]

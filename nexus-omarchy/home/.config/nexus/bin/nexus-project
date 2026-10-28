@@ -1,0 +1,112 @@
+#!/bin/bash
+# NEXUS project list: the [projects] section of ~/.config/nexus/identity.toml.
+#
+#   nexus-project add [DIR] [NAME]   add DIR (default: current folder)
+#   nexus-project rm DIR|NAME        remove it from the list (the folder stays)
+#   nexus-project list               name<TAB>path, one per line
+#   nexus-project scan               JSON: folders under ~ that look like
+#                                    projects (git repo or manifest) and aren't
+#                                    listed yet, newest first. Only reads.
+#
+# The file is rewritten in place; the previous version is kept as
+# identity.toml.bak. The menu and rail pick up the change on save.
+
+set -uo pipefail
+FILE=$HOME/.config/nexus/identity.toml
+
+tilde() { [[ $1 == "$HOME" || $1 == "$HOME"/* ]] && echo "~${1#"$HOME"}" || echo "$1"; }
+# shellcheck disable=SC2088  # matching a literal "~"
+expand() { [[ $1 == "~" || $1 == "~/"* ]] && echo "$HOME${1#\~}" || echo "$1"; }
+
+# name<TAB>path for every entry in [projects], path expanded.
+entries() {
+  [[ -f $FILE ]] || return 0
+  awk '
+    /^[[:space:]]*\[/ { inside = ($0 ~ /^[[:space:]]*\[projects\][[:space:]]*$/); next }
+    inside && /=/ && !/^[[:space:]]*#/ {
+      line = $0
+      eq = index(line, "=")
+      name = substr(line, 1, eq - 1); value = substr(line, eq + 1)
+      gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", name)
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", value)
+      gsub(/\\"/, "\"", value)
+      print name "\t" value
+    }' "$FILE" | while IFS=$'\t' read -r name path; do printf '%s\t%s\n' "$name" "$(expand "$path")"; done
+}
+
+toml_quote() { local s=${1//\\/\\\\}; printf '"%s"' "${s//\"/\\\"}"; }
+
+cmd=${1:-}
+shift || true
+case $cmd in
+  list) entries ;;
+
+  add)
+    dir=$(realpath -e -- "${1:-.}" 2>/dev/null) || { echo "no such folder: ${1:-.}" >&2; exit 1; }
+    [[ -d $dir ]] || { echo "not a folder: $dir" >&2; exit 1; }
+    if entries | cut -f2 | grep -qxF -- "$dir"; then echo "already listed: $(tilde "$dir")"; exit 0; fi
+    name=${2:-$(basename "$dir")}
+    base=$name n=2
+    while entries | cut -f1 | grep -qxF -- "$name"; do name="$base-$n"; n=$((n + 1)); done
+    key=$name
+    [[ $key =~ ^[A-Za-z0-9_-]+$ ]] || key=$(toml_quote "$name")
+    line="$key = $(toml_quote "$(tilde "$dir")")"
+    mkdir -p "$(dirname "$FILE")"; touch "$FILE"; cp "$FILE" "$FILE.bak"
+    if grep -qE '^[[:space:]]*\[projects\][[:space:]]*$' "$FILE"; then
+      # Insert after the last non-blank line of the [projects] section.
+      awk -v add="$line" '
+        { lines[NR] = $0 }
+        /^[[:space:]]*\[/ { if (inside && !done) { at = last; done = 1 } inside = ($0 ~ /^[[:space:]]*\[projects\]/); if (inside) last = NR; next }
+        inside && $0 !~ /^[[:space:]]*$/ { last = NR }
+        END {
+          if (!done) at = last
+          for (i = 1; i <= NR; i++) { print lines[i]; if (i == at) print add }
+        }' "$FILE.bak" > "$FILE"
+    else
+      { cat "$FILE.bak"; [[ -s $FILE.bak ]] && echo; echo "[projects]"; echo "$line"; } > "$FILE"
+    fi
+    echo "added $name → $(tilde "$dir")"
+    ;;
+
+  rm|remove)
+    target=${1:?usage: nexus-project rm DIR|NAME}
+    abs=$(realpath -m -- "$(expand "$target")")
+    match=$(entries | awk -F'\t' -v t="$target" -v a="$abs" '$1 == t || $2 == a || $2 == t { print $1; exit }')
+    [[ -n $match ]] || { echo "not in the project list: $target" >&2; exit 1; }
+    cp "$FILE" "$FILE.bak"
+    awk -v name="$match" '
+      /^[[:space:]]*\[/ { inside = ($0 ~ /^[[:space:]]*\[projects\]/); print; next }
+      inside && /=/ && !/^[[:space:]]*#/ {
+        n = substr($0, 1, index($0, "=") - 1); gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", n)
+        if (n == name) next
+      }
+      { print }' "$FILE.bak" > "$FILE"
+    echo "removed $match (the folder is untouched)"
+    ;;
+
+  scan)
+    listed=$(entries | cut -f2)
+    # Project markers up to 4 levels below ~, skipping hidden and dependency folders.
+    fd -H -d 4 -t f -t d \
+      --exclude node_modules --exclude .venv --exclude venv --exclude .cache --exclude .local \
+      --exclude .config --exclude .mozilla --exclude snap --exclude go --exclude .cargo --exclude .npm \
+      '^(\.git|package\.json|pyproject\.toml|Makefile|Cargo\.toml|go\.mod|compose\.ya?ml|docker-compose\.ya?ml)$' "$HOME" 2>/dev/null |
+      sed -E 's#/+$##; s#/[^/]+$##' | grep -vxF -- "$HOME" | sort -u |
+      # Keep only the outermost folder when projects are nested (sorted, a
+      # parent always comes before its children).
+      awk '{ for (i = 1; i <= n; i++) if (index($0, keep[i] "/") == 1) next; keep[++n] = $0; print }' |
+      while read -r dir; do
+        [[ ${dir#"$HOME"} == */.* ]] && continue  # inside a hidden folder
+        grep -qxF -- "$dir" <<<"$listed" && continue
+        printf '%s\t%s\n' "$(stat -c %Y -- "$dir")" "$dir"
+      done | sort -rn | cut -f2 | head -n 40 |
+      while read -r dir; do
+        jq -nc --arg dir "$dir" --arg path "$(tilde "$dir")" --arg name "$(basename "$dir")" \
+          --argjson git "$([[ -e $dir/.git ]] && echo true || echo false)" \
+          '{dir: $dir, path: $path, name: $name, git: $git}'
+      done | jq -sc '.'
+    ;;
+
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

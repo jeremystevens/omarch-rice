@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NEXUS keys</title>
+<style>
+  @page { size: letter portrait; margin: 0.45in; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: #111; background: #fff;
+    font: 8.5pt/1.27 "JetBrainsMono Nerd Font", "DejaVu Sans Mono", monospace;
+  }
+  h1 { font: 700 20pt/1 "Silkscreen", monospace; margin: 0; letter-spacing: 1px; }
+  .sub { color: #555; margin: 4px 0 12px; }
+  h2 {
+    font: 700 10.5pt/1 "Silkscreen", monospace; letter-spacing: .5px;
+    margin: 8px 0 3px; padding-bottom: 3px; border-bottom: 1.5px solid #111;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1.6px 4px; vertical-align: top; border-bottom: 1px solid #ddd; }
+  td:first-child { width: 1%; white-space: nowrap; padding-right: 10px; }
+  kbd {
+    display: inline-block; padding: 0 4px; min-width: 1.4em; text-align: center;
+    border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px;
+    font: 600 7.8pt/1.35 "JetBrainsMono Nerd Font", monospace; background: #f4f4f4;
+  }
+  .note { color: #444; font-size: 8.6pt; margin: 4px 0 0; }
+
+  /* top row diagram */
+  .row { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; margin-top: 4px; }
+  .key {
+    border: 1.5px solid #111; border-radius: 5px; padding: 4px 2px 3px; text-align: center;
+    min-height: 0; display: flex; flex-direction: column; gap: 2px;
+  }
+  .key .cap { font-size: 13pt; line-height: 1.2; }
+  .key .fn { font-size: 7pt; color: #777; }
+  .key .what { font-weight: 700; font-size: 7.8pt; line-height: 1.15; }
+  .key .mod { font-size: 6.8pt; color: #333; line-height: 1.2; }
+  .key.nx { background: #eaeaea; border-width: 2.5px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 5px; font-size: 8.4pt; }
+  .page2 { break-before: page; }
+  .box { border: 1.5px solid #111; border-radius: 5px; padding: 6px 9px; margin-top: 6px; }
+  table.letters td:first-child { width: auto; }
+</style>
+</head>
+<body>
+
+<h1>NEXUS KEYS</h1>
+<div class="sub">Acer Chromebook Spin 13 · Omarchy · <b>Search</b> is the Super key (left side, where Caps Lock usually is)</div>
+
+<h2>The top row</h2>
+<div class="row">
+  <div class="key"><span class="cap">esc</span><span class="fn">&nbsp;</span><span class="what">Escape</span></div>
+  <div class="key"><span class="cap">←</span><span class="fn">F1</span><span class="what">Back</span><span class="mod">browser, Files</span></div>
+  <div class="key"><span class="cap">→</span><span class="fn">F2</span><span class="what">Forward</span><span class="mod">browser, Files</span></div>
+  <div class="key"><span class="cap">⟳</span><span class="fn">F3</span><span class="what">Reload</span><span class="mod">browser</span></div>
+  <div class="key"><span class="cap">⛶</span><span class="fn">F4</span><span class="what">Full screen</span><span class="mod">window on/off</span></div>
+  <div class="key nx"><span class="cap">▭▯</span><span class="fn">F5 · overview</span><span class="what">NEXUS menu</span><span class="mod">Shift: search<br>Alt: jobs<br>Ctrl: screenshot<br>Ctrl+Shift: capture</span></div>
+  <div class="key"><span class="cap">☼−</span><span class="fn">F6</span><span class="what">Dimmer</span><span class="mod">Alt: fine<br>Shift: min</span></div>
+  <div class="key"><span class="cap">☼+</span><span class="fn">F7</span><span class="what">Brighter</span><span class="mod">Alt: fine<br>Shift: max</span></div>
+  <div class="key"><span class="cap">🔇</span><span class="fn">F8</span><span class="what">Mute</span><span class="mod">Shift: switch output</span></div>
+  <div class="key"><span class="cap">🔉</span><span class="fn">F9</span><span class="what">Quieter</span><span class="mod">Alt: fine</span></div>
+  <div class="key"><span class="cap">🔊</span><span class="fn">F10</span><span class="what">Louder</span><span class="mod">Alt: fine</span></div>
+</div>
+<div class="legend">
+  <span><kbd>Search</kbd> + any top-row key = the real F1–F10 (for apps that need F-keys). Volume and brightness also work on the lock screen.</span>
+
+</div>
+
+<div class="grid">
+<div>
+  <h2>NEXUS</h2>
+  <table>
+    <tr><td><kbd>▭▯</kbd> &nbsp;or&nbsp; <kbd>Search</kbd> <kbd>;</kbd></td><td>Command menu (press again to close)</td></tr>
+    <tr><td><kbd>Shift</kbd> <kbd>▭▯</kbd></td><td>Open straight into search</td></tr>
+    <tr><td><kbd>Alt</kbd> <kbd>▭▯</kbd></td><td>Open straight into jobs</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>B</kbd></td><td>Rail: collapse / expand</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Alt</kbd> <kbd>B</kbd></td><td>Rail: keyboard focus; <kbd>esc</kbd> leaves</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>▭▯</kbd></td><td>Screenshot (there is no Print Screen key)</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>▭▯</kbd></td><td>Capture menu: region, recording, OCR</td></tr>
+  </table>
+
+  <h2>Inside the command menu</h2>
+  <table>
+    </table>
+  <table class="letters">
+    <tr><td style="width:auto"><kbd>t</kbd> terminal</td><td style="width:auto"><kbd>p</kbd> projects</td><td style="width:auto"><kbd>w</kbd> windows</td></tr>
+    <tr><td style="width:auto"><kbd>r</kbd> recent files</td><td style="width:auto"><kbd>e</kbd> editor</td><td style="width:auto"><kbd>b</kbd> browser</td></tr>
+    <tr><td style="width:auto"><kbd>f</kbd> files</td><td style="width:auto"><kbd>k</kbd> clipboard</td><td style="width:auto"><kbd>s</kbd> tmux sessions</td></tr>
+    <tr><td style="width:auto"><kbd>j</kbd> jobs</td><td style="width:auto"><kbd>d</kbd> dev toolbox</td><td style="width:auto"><kbd>i</kbd> wifi</td></tr>
+    <tr><td style="width:auto"><kbd>h</kbd> bluetooth</td><td style="width:auto"><kbd>v</kbd> volume</td><td style="width:auto"><kbd>n</kbd> night light</td></tr>
+    <tr><td style="width:auto"><kbd>c</kbd> screenshot</td><td style="width:auto"><kbd>l</kbd> lock</td><td style="width:auto"><kbd>?</kbd> all keys</td></tr>
+    </table>
+  <table>
+    <tr><td><kbd>/</kbd></td><td>Search: every key is text until <kbd>esc</kbd></td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd> or <kbd>↑</kbd><kbd>↓</kbd> <kbd>enter</kbd></td><td>Pick a row in a list</td></tr>
+    <tr><td><kbd>esc</kbd></td><td>Back one step: search → menu → closed</td></tr>
+  </table>
+
+  <h2>In a project</h2>
+  <table>
+    <tr><td><kbd>a</kbd> · <kbd>x</kbd><kbd>x</kbd></td><td>In the list: add a project · remove (folder stays)</td></tr>
+    <tr><td><kbd>t</kbd></td><td>Terminal (tmux session for the project)</td></tr>
+    <tr><td><kbd>e</kbd> / <kbd>f</kbd> / <kbd>g</kbd></td><td>nvim / Files / lazygit</td></tr>
+    <tr><td><kbd>v</kbd></td><td>Create .env from .env.example</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Run that task (only when you pick it)</td></tr>
+  </table>
+  <p class="note">Jobs list: <kbd>enter</kbd> full output · <kbd>s</kbd> stop · <kbd>o</kbd> open link · <kbd>c</kbd> clear finished</p>
+</div>
+
+<div>
+  <h2>Windows (Omarchy, unchanged)</h2>
+  <table>
+    <tr><td><kbd>Search</kbd> <kbd>enter</kbd></td><td>Terminal</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>space</kbd></td><td>App launcher</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>W</kbd></td><td>Close window</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>F</kbd> &nbsp;or&nbsp; <kbd>⛶</kbd></td><td>Full screen</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>T</kbd></td><td>Float / tile</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>J</kbd></td><td>Flip the split</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></td><td>Focus a neighbour</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Shift</kbd> <kbd>arrows</kbd></td><td>Swap window</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>−</kbd> / <kbd>=</kbd></td><td>Narrower / wider</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Shift</kbd> <kbd>−</kbd> / <kbd>=</kbd></td><td>Shorter / taller</td></tr>
+    <tr><td><kbd>Search</kbd> + drag / right-drag</td><td>Move / resize with the touchpad</td></tr>
+    <tr><td><kbd>Alt</kbd> <kbd>tab</kbd></td><td>Next window</td></tr>
+  </table>
+
+  <h2>Workspaces</h2>
+  <table>
+    <tr><td><kbd>Search</kbd> <kbd>1</kbd>–<kbd>5</kbd></td><td>Go to workspace</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Shift</kbd> <kbd>1</kbd>–<kbd>5</kbd></td><td>Move window there</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>tab</kbd></td><td>Next workspace</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>S</kbd></td><td>Scratchpad</td></tr>
+  </table>
+
+  <h2>System</h2>
+  <table>
+    <tr><td><kbd>Search</kbd> <kbd>Ctrl</kbd> <kbd>L</kbd></td><td>Lock</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>esc</kbd></td><td>Power / system menu</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>K</kbd></td><td>Every key binding, searchable</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>,</kbd></td><td>Dismiss notification</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Ctrl</kbd> <kbd>N</kbd></td><td>Night light</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>C</kbd> / <kbd>V</kbd></td><td>Copy / paste (also in terminals)</td></tr>
+  </table>
+
+  <div class="box">
+    <b>Learn these five first</b><br>
+    <kbd>▭▯</kbd> menu · <kbd>Search</kbd><kbd>enter</kbd> terminal ·
+    <kbd>Search</kbd><kbd>W</kbd> close · <kbd>Search</kbd><kbd>1</kbd>–<kbd>5</kbd> workspaces ·
+    <kbd>Search</kbd><kbd>K</kbd> look up anything else
+  </div>
+</div>
+</div>
+
+</body>
+</html>

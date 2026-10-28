@@ -81,9 +81,9 @@ while :; do
 
   now=$(date +%s%N)
   rx=null; tx=null; rx_rate=null; tx_rate=null; dbm=null
-  if [[ -n $dev && -r /sys/class/net/$dev/statistics/rx_bytes ]]; then
-    rx=$(read_first /sys/class/net/$dev/statistics/rx_bytes)
-    tx=$(read_first /sys/class/net/$dev/statistics/tx_bytes)
+  if [[ -n $dev && -r /sys/class/net/"$dev"/statistics/rx_bytes ]]; then
+    rx=$(read_first /sys/class/net/"$dev"/statistics/rx_bytes)
+    tx=$(read_first /sys/class/net/"$dev"/statistics/tx_bytes)
     if (( prev_t > 0 && rx >= prev_rx )); then
       dt=$(( (now - prev_t) / 1000000 )); (( dt < 1 )) && dt=1
       rx_rate=$(( (rx - prev_rx) * 1000 / dt )); tx_rate=$(( (tx - prev_tx) * 1000 / dt ))

@@ -5,6 +5,13 @@
 #                                manifests, one object per directory
 #   nexus-dev sessions           JSON: tmux sessions (name, windows, path)
 #   nexus-dev versions           JSON: versions of the main dev tools
+#   nexus-dev resume DIR         back to work: reattach the project's tmux
+#                                session, or rebuild its saved layout (editor +
+#                                shells, same folders) if it is gone. Programs
+#                                that were running are listed, never restarted.
+#   nexus-dev save NAME|--all    snapshot a project session's layout
+#   nexus-dev forget DIR         drop the saved layout (the folder is untouched)
+#   nexus-dev diff DIR           terminal with `git diff HEAD` and untracked files
 #   nexus-dev term DIR [NAME]    terminal attached to tmux session NAME in DIR
 #   nexus-dev edit DIR           nvim in DIR
 #   nexus-dev files DIR          file manager in DIR
@@ -20,7 +27,17 @@ set -uo pipefail
 
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 
-launch() { setsid uwsm-app -- "$@" >/dev/null 2>&1 & }
+# The first tmux call can start the tmux server, which would keep the resume
+# lock (fd 9) open for as long as it runs; no child ever gets it.
+tmux() { command tmux "$@" 9>&-; }
+launch() { setsid uwsm-app -- "$@" >/dev/null 2>&1 9>&- & }   # 9>&-: never hand the resume lock to the terminal
+notify() { notify-send -a NEXUS -u low "$@" 2>/dev/null || true; }
+
+STATE=$HOME/.local/state/nexus/sessions
+SHELLS='^(bash|zsh|fish|sh|dash)$'
+# nvim reopens the files it had open here, through LazyVim's session plugin
+# (saved when nvim quits). With no saved session it shows the dashboard.
+NVIM_RESUME="nvim -c \"lua pcall(function() require('persistence').load() end)\""
 
 # tmux session names may not contain '.' or ':'
 session_name() { local n=${1//[.:]/-}; printf '%s' "${n:-project}"; }
@@ -50,6 +67,127 @@ git_json() {
       ahead: $ahead, behind: $behind, staged: $staged, unstaged: $unstaged,
       untracked: $untracked, conflicted: $conflicted,
       clean: ($staged + $unstaged + $untracked + $conflicted == 0)}'
+}
+
+# ---------------------------------------------------------------- sessions
+
+# Is the project's tmux session running, does a terminal show it, is a
+# layout saved for after a reboot?
+session_json() {
+  local name; name=$(session_name "$(basename -- "$1")")
+  local live=false attached=false saved=false
+  if tmux has-session -t "=$name" 2>/dev/null; then
+    live=true
+    [[ -n $(tmux list-clients -t "=$name:" 2>/dev/null) ]] && attached=true
+  fi
+  [[ -f $STATE/$name.json ]] && saved=true
+  jq -nc --arg name "$name" --argjson live $live --argjson attached $attached --argjson saved $saved \
+    '{name: $name, live: $live, attached: $attached, saved: $saved}'
+}
+
+# Write the layout of session NAME: windows, their panes' folders and what
+# each pane was running, the split layout. Nothing else (no scrollback).
+save_session() {
+  local name=$1 dir
+  dir=$(tmux show-options -qv -t "=$name:" @nexus_dir 2>/dev/null) || return 0
+  [[ -n $dir ]] || return 0
+  mkdir -p "$STATE"
+  local tmp; tmp=$(mktemp "$STATE/.save.XXXXXX")
+  local us=$'\x1f'
+  tmux list-panes -s -t "=$name:" -F "#{window_index}$us#{window_name}$us#{window_active}$us#{window_layout}$us#{pane_index}$us#{pane_active}$us#{pane_current_path}$us#{pane_current_command}" 2>/dev/null |
+    jq -Rsc --arg name "$name" --arg dir "$dir" --arg at "$(date -Iseconds)" '
+      split("\n") | map(select(length > 0) | split("\u001f")) |
+      group_by(.[0] | tonumber) |
+      map({index: (.[0][0] | tonumber), name: .[0][1], active: (.[0][2] == "1"), layout: .[0][3],
+           panes: map({active: (.[5] == "1"), cwd: .[6], cmd: .[7]})}) |
+      {name: $name, dir: $dir, saved: $at, windows: .}' >"$tmp" &&
+    [[ -s $tmp ]] && mv "$tmp" "$STATE/$name.json"
+  rm -f "$tmp"
+}
+
+# Session-scoped hooks keep the snapshot current when windows or panes come
+# and go. They are set on NEXUS project sessions only, never globally.
+watch_session() {
+  local name=$1 dir=$2 hook cmd
+  tmux set-option -q -t "=$name:" @nexus_dir "$dir"
+  cmd="run-shell -b \"'$HOME/.config/nexus/bin/nexus-dev' save '${name//\'/}'\""
+  for hook in after-new-window after-split-window after-kill-pane after-rename-window window-unlinked session-window-changed client-detached; do
+    tmux set-hook -t "=$name:" "$hook" "$cmd"
+  done
+}
+
+# The Hyprland window of a terminal showing session NAME, if there is one:
+# walk up from the tmux client process to a pid Hyprland knows.
+client_window() {
+  local name=$1 pid wpids
+  wpids=$(hyprctl clients -j | jq -r '.[] | "\(.pid) \(.address)"')
+  for pid in $(tmux list-clients -t "=$name:" -F '#{client_pid}' 2>/dev/null); do
+    while [[ -n $pid && $pid -gt 1 ]]; do
+      local hit; hit=$(awk -v p="$pid" '$1 == p { print $2; exit }' <<<"$wpids")
+      [[ -n $hit ]] && { echo "$hit"; return 0; }
+      pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    done
+  done
+  return 1
+}
+
+focus_or_attach() {
+  local name=$1 dir=$2 addr
+  if addr=$(client_window "$name"); then
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+    return 0
+  fi
+  launch xdg-terminal-exec --dir="$dir" tmux attach-session -t "=$name:"
+  return 1
+}
+
+# Rebuild session NAME from its snapshot. Shells come back in the same
+# folders; nvim panes reopen nvim; anything else gets a shell in its folder
+# and is reported, not restarted.
+restore_session() {
+  local name=$1 dir=$2 snap=$STATE/$1.json
+  local -a skipped=()
+  local nwin w first=1 target cwd cmd np p layout active_win=""
+  nwin=$(jq '.windows | length' "$snap")
+  for ((w = 0; w < nwin; w++)); do
+    local wname; wname=$(jq -r ".windows[$w].name" "$snap")
+    np=$(jq ".windows[$w].panes | length" "$snap")
+    for ((p = 0; p < np; p++)); do
+      cwd=$(jq -r ".windows[$w].panes[$p].cwd" "$snap")
+      cmd=$(jq -r ".windows[$w].panes[$p].cmd" "$snap")
+      [[ -d $cwd ]] || cwd=$dir
+      if ((p == 0)); then
+        if ((first)); then
+          tmux new-session -d -s "$name" -n "$wname" -c "$cwd" -x 200 -y 50
+          first=0
+        else
+          tmux new-window -d -t "=$name:" -n "$wname" -c "$cwd"
+        fi
+        target=$(tmux list-windows -t "=$name:" -F '#{window_index}' | tail -n 1); target="=$name:$target"
+      else
+        tmux split-window -d -t "$target" -c "$cwd"
+      fi
+      local pane; pane=$(tmux list-panes -t "$target" -F '#{pane_id}' | tail -n 1)
+      if [[ $cmd == nvim ]]; then
+        tmux send-keys -t "$pane" "$NVIM_RESUME" Enter
+      elif ! [[ $cmd =~ $SHELLS ]]; then
+        skipped+=("$cmd in ${cwd/#$HOME/\~}")
+      fi
+    done
+    layout=$(jq -r ".windows[$w].layout" "$snap")
+    ((np > 1)) && tmux select-layout -t "$target" "$layout" >/dev/null 2>&1
+    [[ $(jq -r ".windows[$w].active" "$snap") == true ]] && active_win=$target
+  done
+  [[ -n $active_win ]] && tmux select-window -t "$active_win"
+  printf '%s\n' "${skipped[@]}"
+}
+
+# A new project session: nvim in the first window, a shell in the second.
+new_session() {
+  local name=$1 dir=$2
+  tmux new-session -d -s "$name" -n edit -c "$dir" -x 200 -y 50
+  tmux send-keys -t "=$name:edit" "$NVIM_RESUME" Enter
+  tmux new-window -d -t "=$name:" -n shell -c "$dir"
 }
 
 # One task: id, label, where it came from, and the exact argv NEXUS would run.
@@ -101,7 +239,8 @@ case $cmd in
     for dir in "$@"; do
       if [[ -d $dir ]]; then
         jq -nc --arg dir "$dir" --argjson git "$(git_json "$dir")" --argjson tasks "$(tasks_json "$dir")" \
-          '{dir: $dir, exists: true, git: $git, tasks: $tasks}'
+          --argjson session "$(session_json "$dir")" \
+          '{dir: $dir, exists: true, git: $git, tasks: $tasks, session: $session}'
       else
         jq -nc --arg dir "$dir" '{dir: $dir, exists: false, git: null, tasks: []}'
       fi
@@ -120,13 +259,75 @@ case $cmd in
       --arg gh "$(v gh --version)" --arg sqlite "$(v sqlite3 --version)" --arg http "$(v http --version)" \
       '$ARGS.named'
     ;;
+  resume)
+    dir=${1%/}
+    name=$(session_name "$(basename -- "$dir")")
+    [[ -d $dir ]] || { notify "Can't resume $(basename -- "$dir")" "The folder ${dir/#$HOME/\~} doesn't exist."; exit 3; }
+    exec 9>"${XDG_RUNTIME_DIR:-/tmp}/nexus-resume-$name.lock"; flock -w 10 9
+    if tmux has-session -t "=$name" 2>/dev/null; then
+      watch_session "$name" "$dir"
+      if focus_or_attach "$name" "$dir"; then how="already open, focused"; else how="reattached"; fi
+      save_session "$name"
+      notify "Resumed $name" "Session $how."
+      exit 0
+    fi
+    snap=$STATE/$name.json
+    if [[ -f $snap && $(jq -r .dir "$snap" 2>/dev/null) == "$dir" ]]; then
+      mapfile -t skipped < <(restore_session "$name" "$dir" | grep -v '^$')
+      body="Layout restored from $(jq -r '.saved[0:16] | sub("T"; " ")' "$snap")."
+      if ((${#skipped[@]})); then
+        list=$(printf '%s; ' "${skipped[@]}")
+        body+=$'\nNot restarted: '"${list%; }"
+      fi
+    else
+      new_session "$name" "$dir"
+      body="New session: nvim and a shell in ${dir/#$HOME/\~}."
+    fi
+    watch_session "$name" "$dir"
+    save_session "$name"
+    launch xdg-terminal-exec --dir="$dir" tmux attach-session -t "=$name:"
+    notify "Resumed $name" "$body"
+    ;;
+  save)
+    if [[ ${1:-} == --all ]]; then
+      for s in $(tmux list-sessions -F '#{session_name}' 2>/dev/null); do save_session "$s"; done
+    else
+      save_session "${1:?usage: nexus-dev save NAME}"
+    fi
+    ;;
+  forget)
+    name=$(session_name "$(basename -- "${1%/}")")
+    rm -f "$STATE/$name.json" && echo "forgot the saved layout of $name"
+    ;;
+  diff)
+    dir=$1
+    git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { notify "No diff" "${dir/#$HOME/\~} is not a git repository."; exit 2; }
+    # shellcheck disable=SC2016  # expanded by the inner bash
+    launch xdg-terminal-exec --dir="$dir" bash -c '
+      { if git rev-parse -q --verify HEAD >/dev/null; then git -c color.ui=always diff HEAD --stat --patch
+        else git -c color.ui=always diff --cached --stat --patch; fi
+        u=$(git ls-files --others --exclude-standard)
+        [[ -n $u ]] && printf "\n\e[33mUntracked (not in the diff):\e[0m\n%s\n" "$u"
+        git diff HEAD --quiet 2>/dev/null && [[ -z $u ]] && echo "No changes against HEAD."
+      } | less -R -F -X; read -rp "Enter closes " _'
+    ;;
   term)
-    dir=$1; name=$(session_name "${2:-$(basename -- "$dir")}")
-    launch xdg-terminal-exec --dir="$dir" tmux new-session -A -s "$name" -c "$dir"
+    dir=${1%/}; name=$(session_name "${2:-$(basename -- "$dir")}")
+    if tmux has-session -t "=$name" 2>/dev/null; then
+      watch_session "$name" "$dir"
+      focus_or_attach "$name" "$dir"
+    else
+      tmux new-session -d -s "$name" -c "$dir"
+      watch_session "$name" "$dir"
+      save_session "$name"
+      launch xdg-terminal-exec --dir="$dir" tmux attach-session -t "=$name:"
+    fi
     ;;
   attach) launch xdg-terminal-exec tmux attach-session -t "=$1" ;;
   edit) launch xdg-terminal-exec --dir="$1" nvim . ;;
   files) launch nautilus --new-window "$1" ;;
-  git) launch xdg-terminal-exec --dir="$1" lazygit ;;
+  git)
+    git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { notify "No git here" "${1/#$HOME/\~} is not a git repository."; exit 2; }
+    launch xdg-terminal-exec --dir="$1" lazygit ;;
   *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

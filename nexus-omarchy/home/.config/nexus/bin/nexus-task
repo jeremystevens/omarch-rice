@@ -1,21 +1,42 @@
 #!/bin/bash
+# shellcheck disable=SC2016  # jq filters below are single-quoted on purpose
 # NEXUS task runner. Every task runs in its own window of the tmux session
 # "nexus-tasks", so its output stays visible and survives the menu closing.
 # Windows stay open after the command exits (remain-on-exit), showing the
 # exit status, until cleared.
 #
-#   nexus-task start DIR PROJECT LABEL -- ARGV...   run ARGV in DIR, print window id
+#   nexus-task start DIR PROJECT LABEL [--task-id ID] -- ARGV...
+#                                                   run ARGV in DIR, print window id
 #   nexus-task list                                 JSON: tasks, state, server links
 #   nexus-task tail ID [LINES]                      last LINES of output (default 14)
 #   nexus-task stop ID                              Ctrl-C, then TERM, then KILL
 #   nexus-task clear                                close windows of finished tasks
 #   nexus-task attach ID                            terminal showing that task
 #
+# Failure inbox (every run is recorded in ~/.local/state/nexus/runs/):
+#   nexus-task runs                                 JSON: recorded runs, newest first
+#   nexus-task finish RUN RC                        record the end of a run (nexus-task-run)
+#   nexus-task rerun RUN                            start the same task again, print window id
+#   nexus-task dismiss RUN                          hide a failure from the inbox (not resolved)
+#   nexus-task history-clear                        delete resolved / dismissed / superseded failures
+#   nexus-task refs RUN                             JSON: file:line references found in the output
+#   nexus-task output RUN                           terminal with the full saved output
+#   nexus-task log-tail RUN [LINES]                 last lines of the saved output, plain text
+#   nexus-task open-ref DIR FILE LINE [COL]         nvim at that line
+#
+# A run ends as done (exit 0), cancelled (stopped here, or ended by Ctrl-C /
+# TERM / HUP / KILL: 129, 130, 137, 143) or failed (any other exit). A later
+# successful run of the same task resolves its open failures; a new failure
+# of the same task supersedes the older one, so each task fails once in the
+# inbox. Logs are capped at 1 MiB each and 50 MiB in total.
+#
 # A server link is reported only when a localhost URL printed by the task
 # matches a TCP port that a process of that task is listening on.
 
 set -uo pipefail
 SESSION=nexus-tasks
+RUNS=$HOME/.local/state/nexus/runs
+mkdir -p "$RUNS"
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 
 have_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
@@ -37,18 +58,67 @@ listening_ports() {
   done | sort -un
 }
 
+# ---------------------------------------------------------------- run records
+
+rec() { printf '%s/%s.json' "$RUNS" "$1"; }
+
+# Apply a jq filter to a run record in place.
+update() {
+  local f; f=$(rec "$1"); shift
+  [[ -f $f ]] || return 1
+  local tmp; tmp=$(mktemp "$RUNS/.rec.XXXXXX")
+  if jq "$@" "$f" >"$tmp"; then mv "$tmp" "$f"; else rm -f "$tmp"; fi
+}
+
+all_records() { find "$RUNS" -maxdepth 1 -name '*.json' -exec cat {} + 2>/dev/null | jq -s 'sort_by(.started) | reverse'; }
+
+notify() { notify-send -a NEXUS "$@" 2>/dev/null || true; }
+
+# Keep storage bounded: 200 records, logs only for open failures and the 30
+# newest other runs, at most 50 MiB of logs.
+prune() {
+  local keep_ids
+  keep_ids=$(all_records | jq -r '
+    (map(select(.status == "failed" and (.resolved_at // .dismissed_at // .superseded_by) == null)) | map(.id)) as $open
+    | ($open + (map(select(.id as $i | $open | index($i) | not)) | .[0:30] | map(.id))) | .[]')
+  all_records | jq -r '.[200:][] | select(.status != "failed" or (.resolved_at // .dismissed_at // .superseded_by) != null) | .id' |
+    while read -r old; do rm -f "$RUNS/$old.json" "$RUNS/$old.log"; done
+  for f in "$RUNS"/*.log; do
+    [[ -e $f ]] || continue
+    grep -qxF "$(basename "$f" .log)" <<<"$keep_ids" || rm -f "$f"
+  done
+  local total
+  while total=$(du -cb "$RUNS"/*.log 2>/dev/null | tail -1 | cut -f1); ((${total:-0} > 52428800)); do
+    oldest=$(find "$RUNS" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -n | head -1 | cut -d' ' -f2-)
+    if [[ -n $oldest ]]; then rm -f "$oldest"; else break; fi
+  done
+}
+
+start_run() {   # DIR PROJECT LABEL TASK_ID ARGV...
+  local dir=$1 project=$2 label=$3 tid=$4; shift 4
+  local id; id=$(date +%Y%m%d-%H%M%S)-$RANDOM
+  jq -n --arg id "$id" --arg project "$project" --arg label "$label" --arg task "$tid" --arg dir "$dir" \
+    --arg started "$(date +%s)" '{id: $id, project: $project, label: $label, task: $task, dir: $dir,
+      argv: $ARGS.positional, started: ($started | tonumber), status: "running"}' --args "$@" >"$(rec "$id")"
+  echo "$id"
+}
+
 cmd=${1:-}
 shift || true
 case $cmd in
   start)
     dir=$1 project=$2 label=$3; shift 3
+    tid=$label
+    [[ ${1:-} == "--task-id" ]] && { tid=$2; shift 2; }
     [[ ${1:-} == "--" ]] && shift
     [[ -d $dir ]] || { echo "no such directory: $dir" >&2; exit 1; }
     name="$project:$label"
+    run=$(start_run "$dir" "$project" "$label" "$tid" "$@")
+    wrapped=("$HOME/.config/nexus/bin/nexus-task-run" "$run" -- "$@")
     if have_session; then
-      id=$(tmux new-window -d -P -F '#{window_id}' -t "=$SESSION:" -n "$name" -c "$dir" -e "PATH=$PATH" -- "$@")
+      id=$(tmux new-window -d -P -F '#{window_id}' -t "=$SESSION:" -n "$name" -c "$dir" -e "PATH=$PATH" -- "${wrapped[@]}")
     else
-      id=$(tmux new-session -d -P -F '#{window_id}' -s "$SESSION" -n "$name" -c "$dir" -e "PATH=$PATH" -x 200 -y 50 -- "$@")
+      id=$(tmux new-session -d -P -F '#{window_id}' -s "$SESSION" -n "$name" -c "$dir" -e "PATH=$PATH" -x 200 -y 50 -- "${wrapped[@]}")
       tmux set-option -t "$id" history-limit 10000 >/dev/null
     fi
     tmux set-option -w -t "$id" remain-on-exit on >/dev/null
@@ -57,6 +127,8 @@ case $cmd in
     tmux set-option -w -t "$id" @nexus_dir "$dir" >/dev/null
     tmux set-option -w -t "$id" @nexus_cmd "$*" >/dev/null
     tmux set-option -w -t "$id" @nexus_started "$(date +%s)" >/dev/null
+    tmux set-option -w -t "$id" @nexus_run "$run" >/dev/null
+    update "$run" --arg w "$id" '.window = $w'
     echo "$id"
     ;;
   list)
@@ -64,8 +136,9 @@ case $cmd in
     # Fields are separated by US (0x1f): a tab would collapse empty fields
     # (a running task has no exit status) and shift every column after it.
     us=$'\x1f'
-    tmux list-windows -t "=$SESSION" -F "#{window_id}$us#{pane_pid}$us#{pane_dead}$us#{pane_dead_status}$us#{@nexus_project}$us#{@nexus_task}$us#{@nexus_dir}$us#{@nexus_cmd}$us#{@nexus_started}" |
-      while IFS=$us read -r id pid dead status project label dir command started; do
+    tmux list-windows -t "=$SESSION" -F "#{window_id}$us#{pane_pid}$us#{pane_dead}$us#{pane_dead_status}$us#{@nexus_project}$us#{@nexus_task}$us#{@nexus_dir}$us#{@nexus_cmd}$us#{@nexus_started}$us#{@nexus_run}" |
+      while IFS=$us read -r id pid dead status project label dir command started run; do
+        state=""; [[ -n $run && -f $(rec "$run") ]] && state=$(jq -r .status "$(rec "$run")")
         url="" ports="[]"
         if [[ $dead != 1 ]]; then
           mapfile -t open < <(listening_ports "$pid")
@@ -79,11 +152,12 @@ case $cmd in
           done
         fi
         jq -nc --arg id "$id" --arg project "$project" --arg label "$label" --arg dir "$dir" --arg command "$command" \
+          --arg run "$run" --arg state "$state" \
           --argjson running "$([[ $dead == 1 ]] && echo false || echo true)" \
           --arg status "$status" --arg started "${started:-0}" --arg url "$url" --argjson ports "$ports" \
           '{id: $id, project: $project, label: $label, dir: $dir, command: $command, running: $running,
             exitCode: (if $running then null else ($status | tonumber? // null) end),
-            started: ($started | tonumber), url: $url, ports: $ports}'
+            started: ($started | tonumber), url: $url, ports: $ports, run: $run, state: $state}'
       done | jq -sc '.'
     ;;
   tail)
@@ -93,6 +167,9 @@ case $cmd in
     id=$1
     pid=$(tmux display-message -p -t "$id" '#{pane_pid}' 2>/dev/null) || exit 1
     [[ $(tmux display-message -p -t "$id" '#{pane_dead}') == 1 ]] && exit 0
+    # Stopped on purpose: cancelled, whatever exit code the program picks.
+    run=$(tmux show-options -wqv -t "$id" @nexus_run 2>/dev/null)
+    [[ -n $run ]] && update "$run" '.status = "cancelled" | .cancelled = "stopped"'
     tmux send-keys -t "$id" C-c
     for _ in 1 2 3 4 5 6; do
       sleep 0.5
@@ -111,8 +188,97 @@ case $cmd in
     done
     exit 0
     ;;
+  finish)
+    run=$1 rc=$2
+    f=$(rec "$run"); [[ -f $f ]] || exit 0
+    log=$RUNS/$run.log
+    if [[ -f $log ]] && (($(stat -c %s "$log") > 1048576)); then
+      tail -c 1048576 "$log" >"$log.tmp" && mv "$log.tmp" "$log"
+    fi
+    prev=$(jq -r .status "$f")
+    if [[ $prev == cancelled ]]; then status=cancelled
+    elif ((rc == 0)); then status="done"
+    elif ((rc == 129 || rc == 130 || rc == 137 || rc == 143)); then status=cancelled
+    else status=failed; fi
+    update "$run" --argjson rc "$rc" --arg s "$status" --arg t "$(date +%s)" \
+      '.exit = $rc | .status = $s | .ended = ($t | tonumber)'
+    project=$(jq -r .project "$f") task=$(jq -r .task "$f") label=$(jq -r .label "$f")
+    # Older open failures of the same task: resolved by a success, superseded
+    # by a new failure. Either way they stay in the history.
+    if [[ $status == "done" || $status == failed ]]; then
+      field=resolved_by; [[ $status == failed ]] && field=superseded_by
+      all_records | jq -r --arg p "$project" --arg t "$task" --arg me "$run" '.[]
+        | select(.project == $p and .task == $t and .id != $me and .status == "failed"
+                 and (.resolved_at // .superseded_by) == null) | .id' |
+        while read -r old; do
+          update "$old" --arg by "$run" --arg t "$(date +%s)" --arg fld "$field" \
+            'if $fld == "resolved_by" then .resolved_by = $by | .resolved_at = ($t | tonumber) else .superseded_by = $by end'
+        done
+    fi
+    [[ $status == failed ]] && notify -u normal "Task failed: $project · $label" "exit $rc · failure inbox: SUPER ; then x"
+    prune
+    ;;
+  runs) all_records | jq -c '.[0:100]' ;;
+  rerun)
+    f=$(rec "$1"); [[ -f $f ]] || { echo "no such run: $1" >&2; exit 1; }
+    mapfile -t argv < <(jq -r '.argv[]' "$f")
+    exec "$0" start "$(jq -r .dir "$f")" "$(jq -r .project "$f")" "$(jq -r .label "$f")" --task-id "$(jq -r .task "$f")" -- "${argv[@]}"
+    ;;
+  dismiss) update "$1" --arg t "$(date +%s)" '.dismissed_at = ($t | tonumber)' ;;
+  history-clear)
+    all_records | jq -r '.[] | select(.status == "failed" and (.resolved_at // .dismissed_at // .superseded_by) != null) | .id' |
+      while read -r old; do rm -f "$RUNS/$old.json" "$RUNS/$old.log"; done
+    ;;
+  refs)
+    f=$(rec "$1"); [[ -f $f && -f $RUNS/$1.log ]] || { echo '[]'; exit 0; }
+    python3 -I - "$RUNS/$1.log" "$(jq -r .dir "$f")" <<'PY'
+import json, os, re, sys
+log, root = sys.argv[1], sys.argv[2]
+text = open(log, "rb").read().decode("utf-8", "replace")
+text = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r", "", text)
+pats = [
+    re.compile(r'File "(?P<f>[^"]+)", line (?P<l>\d+)'),                       # Python tracebacks
+    re.compile(r'(?P<f>[\w./@+-]*[\w-]\.[A-Za-z0-9]+)\((?P<l>\d+),(?P<c>\d+)\)'),  # tsc: file.ts(3,5)
+    re.compile(r'(?P<f>(?:/|\./|[\w@+-][\w./@+-]*/)?[\w@+-][\w.@+-]*\.[A-Za-z0-9]+):(?P<l>\d+)(?::(?P<c>\d+))?'),
+]
+skip = ("/node_modules/", "/site-packages/", "/.venv/", "/usr/lib/", "/usr/include/", "<frozen")
+out, seen = [], set()
+for line in text.splitlines():
+    for p in pats:
+        for m in p.finditer(line):
+            f = m.group("f")
+            path = f if os.path.isabs(f) else os.path.normpath(os.path.join(root, f))
+            if any(s in path for s in skip) or not os.path.isfile(path):
+                continue
+            ln = int(m.group("l")); col = int(m.groupdict().get("c") or 1)
+            key = (path, ln)
+            if key in seen:
+                continue
+            seen.add(key)
+            rel = os.path.relpath(path, root)
+            out.append({"file": path, "rel": rel if not rel.startswith("..") else path,
+                        "line": ln, "col": col, "text": line.strip()[:160]})
+    if len(out) >= 20:
+        break
+print(json.dumps(out[:20]))
+PY
+    ;;
+  output)
+    f=$(rec "$1"); log=$RUNS/$1.log
+    [[ -f $f && -f $log ]] || { notify -u low "Output not kept" "The log of this run was trimmed to save space."; exit 1; }
+    title="$(jq -r '"\(.project) · \(.label) · \(.status)\(if .exit != null then " (exit \(.exit))" else "" end)"' "$f")"
+    setsid uwsm-app -- xdg-terminal-exec --dir="$(jq -r .dir "$f")" less -R +G -Ps"$title  ?e(END):%pb\%." "$log" >/dev/null 2>&1 &
+    ;;
+  log-tail)
+    [[ -f $RUNS/$1.log ]] || { echo "(output not kept)"; exit 0; }
+    tail -n "${2:-14}" "$RUNS/$1.log" | tr -d '\r' | sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g; s/\x1b\][^\x07]*\x07//g'
+    ;;
+  open-ref)
+    dir=$1 file=$2 line=$3 col=${4:-1}
+    setsid uwsm-app -- xdg-terminal-exec --dir="$dir" nvim "+call cursor($line, $col)" "$file" >/dev/null 2>&1 &
+    ;;
   attach)
     setsid uwsm-app -- xdg-terminal-exec tmux attach-session -t "=$SESSION" \; select-window -t "$1" >/dev/null 2>&1 &
     ;;
-  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '3,33p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

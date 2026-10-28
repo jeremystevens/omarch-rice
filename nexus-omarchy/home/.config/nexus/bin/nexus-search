@@ -1,0 +1,106 @@
+#!/bin/bash
+# NEXUS search backend for the command menu. Reads file names and text only;
+# never runs anything from the folders it searches.
+#
+#   nexus-search files QUERY DIR...   file names inside the given project folders
+#   nexus-search notes QUERY          note file names (see "Notes" below)
+#   nexus-search text DIR QUERY       lines containing QUERY in one project
+#   nexus-search notes-dirs           the note folders in use, one per line
+#
+# Output is JSON. Searches only the folders it is given (your listed projects
+# and note folders), never the whole home directory. .gitignore and other
+# ignore files are respected, hidden files are skipped, and credential-like
+# files are always excluded. Results are capped and each search times out
+# after 3 s, so a stale search can't pile up.
+#
+# Notes: the folders in `notes = "..."` under [search] in
+# ~/.config/nexus/identity.toml (comma-separated). Without that setting:
+# ~/Notes or ~/notes if they exist, plus Obsidian vaults.
+
+set -uo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+
+# Never shown, even when not ignored by git.
+SECRETS=(
+  '.env' '.env.*' '*.pem' '*.key' '*.p12' '*.pfx' '*.kdbx' '*.gpg' '*.asc'
+  'id_rsa*' 'id_ed25519*' 'id_ecdsa*' '.netrc' '.npmrc' '.pypirc' '.git-credentials'
+  '*credential*' '*secret*' '*.keystore' '*.jks'
+)
+fd_excludes() { local g; for g in "${SECRETS[@]}"; do printf -- '--exclude\0%s\0' "$g"; done; }
+rg_globs() { local g; for g in "${SECRETS[@]}"; do printf -- '--glob\0!%s\0' "$g"; done; }
+
+# shellcheck disable=SC2088  # matching a literal "~"
+expand() { [[ $1 == "~" || $1 == "~/"* ]] && echo "$HOME${1:1}" || echo "$1"; }
+
+notes_dirs() {
+  local conf=$HOME/.config/nexus/identity.toml line
+  line=$(awk '/^\[/{s=($0 ~ /^\[search\]/)} s && /^[[:space:]]*notes[[:space:]]*=/{sub(/^[^=]*=[[:space:]]*"/, ""); sub(/"[[:space:]]*(#.*)?$/, ""); print; exit}' "$conf" 2>/dev/null)
+  if [[ -n $line ]]; then
+    tr ',' '\n' <<<"$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | while read -r d; do [[ -n $d ]] && expand "$d"; done
+  else
+    local d
+    for d in "$HOME/Notes" "$HOME/notes"; do [[ -d $d ]] && echo "$d"; done
+    jq -r '.vaults // {} | .[].path' "$HOME/.config/obsidian/obsidian.json" 2>/dev/null
+  fi | while read -r d; do [[ -d $d ]] && echo "$d"; done | sort -u
+}
+
+# fd over DIRs, file names containing QUERY (case-insensitive unless it has
+# capitals), as {path, root} objects.
+fd_json() {
+  local query=$1 limit=$2; shift 2
+  local -a ex extra=()
+  mapfile -d '' ex < <(fd_excludes)
+  [[ ${EXT:-} ]] && for e in $EXT; do extra+=(-e "$e"); done
+  local dir
+  for dir in "$@"; do
+    [[ -d $dir ]] || continue
+    timeout 3 fd --type f --fixed-strings --max-results "$limit" "${ex[@]}" "${extra[@]}" -- "$query" "$dir" 2>/dev/null |
+      jq -Rc --arg root "$dir" '{path: ., root: $root}'
+  done | head -n "$limit" | jq -sc '.'
+}
+
+main() {
+cmd=${1:-}
+shift || true
+case $cmd in
+  files)
+    query=$1; shift
+    ((${#query} >= 2)) || { echo '[]'; exit 0; }
+    fd_json "$query" 40 "$@"
+    ;;
+  notes)
+    query=$1
+    ((${#query} >= 2)) || { echo '[]'; exit 0; }
+    mapfile -t dirs < <(notes_dirs)
+    ((${#dirs[@]})) || { echo '[]'; exit 0; }
+    EXT="md markdown txt org" fd_json "$query" 20 "${dirs[@]}"
+    ;;
+  notes-dirs) notes_dirs ;;
+  text)
+    dir=$1 query=$2
+    [[ -d $dir && ${#query} -ge 2 ]] || { echo '[]'; exit 0; }
+    mapfile -d '' globs < <(rg_globs)
+    timeout 3 rg --line-number --column --no-heading --color never --fixed-strings --smart-case \
+      --max-count 5 --max-columns 240 --max-columns-preview --max-filesize 1M "${globs[@]}" \
+      -- "$query" "$dir" 2>/dev/null | head -n 60 |
+      jq -Rc --arg root "$dir" 'capture("^(?<path>.*?):(?<line>[0-9]+):(?<col>[0-9]+):(?<text>.*)$")
+        | {path, line: (.line | tonumber), col: (.col | tonumber), text: (.text | sub("^\\s+"; "") | .[0:200]), root: $root}' |
+      jq -sc '.'
+    ;;
+  *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
+}
+
+# The menu stops an outdated search by signalling this script. Bash would
+# only act on the signal after the running pipeline ends, so the work runs in
+# the background and the whole process tree (fd, rg, timeout, jq) is killed
+# as soon as the signal arrives.
+kill_tree() {
+  local child
+  for child in $(ps -o pid= --ppid "$1" 2>/dev/null); do kill_tree "$child"; done
+  kill -TERM "$1" 2>/dev/null
+}
+main "$@" &
+worker=$!
+trap 'kill_tree $worker; exit 143' TERM INT HUP
+wait "$worker"

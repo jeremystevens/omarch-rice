@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>NEXUS keys</title>
 <style>
-  @page { size: letter portrait; margin: 0.45in; }
+  @page { size: letter portrait; margin: 0.32in 0.4in; }
   * { box-sizing: border-box; }
   body {
     margin: 0; color: #111; background: #fff;
@@ -18,7 +18,7 @@
   }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 1.6px 4px; vertical-align: top; border-bottom: 1px solid #ddd; }
+  td { padding: 1.2px 4px; vertical-align: top; border-bottom: 1px solid #ddd; }
   td:first-child { width: 1%; white-space: nowrap; padding-right: 10px; }
   kbd {
     display: inline-block; padding: 0 4px; min-width: 1.4em; text-align: center;
@@ -41,7 +41,7 @@
   .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 5px; font-size: 8.4pt; }
   .page2 { break-before: page; }
   .box { border: 1.5px solid #111; border-radius: 5px; padding: 6px 9px; margin-top: 6px; }
-  table.letters td:first-child { width: auto; }
+  table.letters td, table.letters td:first-child { width: auto; white-space: nowrap; padding-right: 6px; }
 </style>
 </head>
 <body>
@@ -72,12 +72,13 @@
 <div>
   <h2>NEXUS</h2>
   <table>
-    <tr><td><kbd>▭▯</kbd> &nbsp;or&nbsp; <kbd>Search</kbd> <kbd>;</kbd></td><td>Command menu (press again to close)</td></tr>
+    <tr><td><kbd>▭▯</kbd> &nbsp;or&nbsp; <kbd>Search</kbd> <kbd>;</kbd></td><td>Command menu</td></tr>
     <tr><td><kbd>Shift</kbd> <kbd>▭▯</kbd></td><td>Open straight into search</td></tr>
     <tr><td><kbd>Alt</kbd> <kbd>▭▯</kbd></td><td>Open straight into jobs</td></tr>
     <tr><td><kbd>Search</kbd> <kbd>B</kbd></td><td>Rail: collapse / expand</td></tr>
-    <tr><td><kbd>Search</kbd> <kbd>Alt</kbd> <kbd>B</kbd></td><td>Rail: keyboard focus; <kbd>esc</kbd> leaves</td></tr>
-    <tr><td><kbd>Ctrl</kbd> <kbd>▭▯</kbd></td><td>Screenshot (there is no Print Screen key)</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>`</kbd></td><td>Scratch terminal on / off</td></tr>
+    <tr><td><kbd>Search</kbd> <kbd>Alt</kbd> <kbd>B</kbd></td><td>Rail: keyboard focus</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>▭▯</kbd></td><td>Screenshot (no Print Screen key)</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>▭▯</kbd></td><td>Capture menu: region, recording, OCR</td></tr>
   </table>
 
@@ -85,28 +86,28 @@
   <table>
     </table>
   <table class="letters">
-    <tr><td style="width:auto"><kbd>t</kbd> terminal</td><td style="width:auto"><kbd>p</kbd> projects</td><td style="width:auto"><kbd>w</kbd> windows</td></tr>
-    <tr><td style="width:auto"><kbd>r</kbd> recent files</td><td style="width:auto"><kbd>e</kbd> editor</td><td style="width:auto"><kbd>b</kbd> browser</td></tr>
-    <tr><td style="width:auto"><kbd>f</kbd> files</td><td style="width:auto"><kbd>k</kbd> clipboard</td><td style="width:auto"><kbd>s</kbd> tmux sessions</td></tr>
-    <tr><td style="width:auto"><kbd>j</kbd> jobs</td><td style="width:auto"><kbd>d</kbd> dev toolbox</td><td style="width:auto"><kbd>i</kbd> wifi</td></tr>
-    <tr><td style="width:auto"><kbd>h</kbd> bluetooth</td><td style="width:auto"><kbd>v</kbd> volume</td><td style="width:auto"><kbd>n</kbd> night light</td></tr>
-    <tr><td style="width:auto"><kbd>c</kbd> screenshot</td><td style="width:auto"><kbd>l</kbd> lock</td><td style="width:auto"><kbd>?</kbd> all keys</td></tr>
+    <tr><td style="width:auto"><kbd>t</kbd> terminal</td><td style="width:auto"><kbd>`</kbd> scratch</td><td style="width:auto"><kbd>p</kbd> projects</td><td style="width:auto"><kbd>w</kbd> windows</td></tr>
+    <tr><td style="width:auto"><kbd>r</kbd> recent</td><td style="width:auto"><kbd>e</kbd> editor</td><td style="width:auto"><kbd>b</kbd> browser</td><td style="width:auto"><kbd>f</kbd> files</td></tr>
+    <tr><td style="width:auto"><kbd>k</kbd> clipboard</td><td style="width:auto"><kbd>s</kbd> sessions</td><td style="width:auto"><kbd>j</kbd> jobs</td><td style="width:auto"><kbd>x</kbd> failures</td></tr>
+    <tr><td style="width:auto"><kbd>d</kbd> dev tools</td><td style="width:auto"><kbd>i</kbd> wifi</td><td style="width:auto"><kbd>h</kbd> bluetooth</td><td style="width:auto"><kbd>v</kbd> volume</td></tr>
+    <tr><td style="width:auto"><kbd>n</kbd> night light</td><td style="width:auto"><kbd>c</kbd> screenshot</td><td style="width:auto"><kbd>l</kbd> lock</td><td style="width:auto"><kbd>?</kbd> all keys</td></tr>
     </table>
   <table>
-    <tr><td><kbd>/</kbd></td><td>Search: every key is text until <kbd>esc</kbd></td></tr>
-    <tr><td><kbd>1</kbd>–<kbd>9</kbd> or <kbd>↑</kbd><kbd>↓</kbd> <kbd>enter</kbd></td><td>Pick a row in a list</td></tr>
-    <tr><td><kbd>esc</kbd></td><td>Back one step: search → menu → closed</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Search everything · <kbd>ctrl</kbd><kbd>enter</kbd> on a project: inside it</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd> · <kbd>↑</kbd><kbd>↓</kbd> <kbd>enter</kbd></td><td>Pick a row</td></tr>
+    <tr><td><kbd>esc</kbd></td><td>Back one step</td></tr>
   </table>
 
   <h2>In a project</h2>
   <table>
     <tr><td><kbd>a</kbd> · <kbd>x</kbd><kbd>x</kbd></td><td>In the list: add a project · remove (folder stays)</td></tr>
-    <tr><td><kbd>t</kbd></td><td>Terminal (tmux session for the project)</td></tr>
+    <tr><td><kbd>r</kbd></td><td><b>Resume</b>: reopen or rebuild the session</td></tr>
+    <tr><td><kbd>t</kbd> · <kbd>d</kbd></td><td>Terminal (tmux) · git diff</td></tr>
     <tr><td><kbd>e</kbd> / <kbd>f</kbd> / <kbd>g</kbd></td><td>nvim / Files / lazygit</td></tr>
-    <tr><td><kbd>v</kbd></td><td>Create .env from .env.example</td></tr>
+    <tr><td><kbd>v</kbd> · <kbd>/</kbd></td><td>.env from .env.example · search text inside</td></tr>
     <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Run that task (only when you pick it)</td></tr>
   </table>
-  <p class="note">Jobs list: <kbd>enter</kbd> full output · <kbd>s</kbd> stop · <kbd>o</kbd> open link · <kbd>c</kbd> clear finished</p>
+  <p class="note">Failures: <kbd>enter</kbd> details · <kbd>r</kbd> rerun · <kbd>o</kbd> output · <kbd>x</kbd> dismiss · numbers open file:line<br>Jobs list: <kbd>enter</kbd> full output · <kbd>s</kbd> stop · <kbd>o</kbd> open link · <kbd>c</kbd> clear finished</p>
 </div>
 
 <div>

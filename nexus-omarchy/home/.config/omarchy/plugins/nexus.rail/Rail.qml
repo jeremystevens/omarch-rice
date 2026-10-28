@@ -85,7 +85,7 @@ Item {
   function activate(item, secondary) {
     if (!item) return
     if (item.kind === "project") {
-      var act = { t: "term", e: "edit", f: "files", g: "git" }[secondary]
+      var act = { r: "resume", t: "term", e: "edit", f: "files", g: "git", d: "diff" }[secondary]
       // Tap / Return opens the project panel (git status, actions, tasks).
       run(act ? [Nx.bin("nexus-dev"), act, item.ref.dir] : ["omarchy-shell", "nexus", "project", item.ref.dir])
     } else if (item.kind === "session") {
@@ -184,6 +184,11 @@ Item {
     command: [root.home + "/.config/nexus/bin/nexus-task", "list"]
     stdout: StdioCollector { onStreamFinished: { try { root.jobs = JSON.parse(text) } catch (e) { root.jobs = [] } } }
   }
+  // Keep Resume's saved layouts current (folders and programs change
+  // without any tmux event). Reads tmux only, for NEXUS project sessions.
+  Process { id: saveProc; command: [root.home + "/.config/nexus/bin/nexus-dev", "save", "--all"] }
+  Timer { running: true; interval: 60000; repeat: true; onTriggered: if (!saveProc.running) saveProc.running = true }
+
   onProjectsChanged: infoProc.refresh()
   onExpandedChanged: if (expanded) { infoProc.refresh(); sessionsProc.running = true; jobsProc.running = true }
   Timer {
@@ -246,7 +251,7 @@ Item {
         else if (k === Qt.Key_Down || k === Qt.Key_Tab || k === Qt.Key_J) root.move(1)
         else if (k === Qt.Key_Up || k === Qt.Key_Backtab || k === Qt.Key_K) root.move(-1)
         else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) root.activate(root.items[root.cursor], "")
-        else if ((k === Qt.Key_T || k === Qt.Key_E || k === Qt.Key_F || k === Qt.Key_G) && root.items[root.cursor] && root.items[root.cursor].kind === "project")
+        else if ((k === Qt.Key_R || k === Qt.Key_T || k === Qt.Key_E || k === Qt.Key_F || k === Qt.Key_G || k === Qt.Key_D) && root.items[root.cursor] && root.items[root.cursor].kind === "project")
           root.activate(root.items[root.cursor], event.text)
         else return
         event.accepted = true
@@ -339,7 +344,7 @@ Item {
             kind: "project"; ref: modelData
             title: modelData.name
             readonly property var inf: root.info[modelData.dir]
-            sub: inf && !inf.exists ? "missing · " + modelData.path : (inf && inf.git ? Nx.gitSummary(inf.git) : modelData.path)
+            sub: Nx.projectSub(inf, modelData.path)
             subColor: inf && inf.git ? Nx.gitColor(inf.git) : Nx.color.dim
             hint: hasCursor ? "↵ t e f g" : ""
           }
@@ -405,7 +410,7 @@ Item {
 
         SectionHead { label: "keys"; topGap: 8 }
         Repeater {
-          model: [["S ;", "command menu"], ["S B", root.collapsed ? "expand rail" : "collapse rail"], ["S ⌥ B", "focus rail"]]
+          model: [["S ;", "command menu"], ["S B", root.collapsed ? "expand rail" : "collapse rail"], ["S ⌥ B", "focus rail"], ["S `", "scratch terminal"]]
           Item {
             required property var modelData
             width: body.width; height: 26

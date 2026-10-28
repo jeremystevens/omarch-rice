@@ -1,0 +1,29 @@
+#!/bin/bash
+# Runs one NEXUS task inside its tmux window and records how it ended.
+# Started by `nexus-task start`; not meant to be run by hand.
+#
+#   nexus-task-run RUN_ID -- ARGV...
+#
+# Output goes to the pane as usual (the program keeps its terminal) and is
+# copied to ~/.local/state/nexus/runs/RUN_ID.log through tmux pipe-pane. The
+# exit status is handed to `nexus-task finish`, which decides done / failed /
+# cancelled, resolves older failures and trims storage.
+
+set -u
+id=$1; shift
+[[ ${1:-} == -- ]] && shift
+RUNS=$HOME/.local/state/nexus/runs
+log=$RUNS/$id.log
+: >"$log"
+[[ -n ${TMUX_PANE:-} ]] && tmux pipe-pane -o -t "$TMUX_PANE" "cat >> $(printf %q "$log")"
+
+# A handler (not an ignore) so Ctrl-C and stop still reach the program, but
+# this script lives on to record the result. Handlers are reset on exec.
+trap 'true' INT TERM HUP
+"$@"
+rc=$?
+
+sleep 0.2   # let pipe-pane flush the last lines
+[[ -n ${TMUX_PANE:-} ]] && tmux pipe-pane -t "$TMUX_PANE"
+"$HOME/.config/nexus/bin/nexus-task" finish "$id" "$rc"
+exit "$rc"

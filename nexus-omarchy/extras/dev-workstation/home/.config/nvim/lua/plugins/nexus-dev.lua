@@ -38,4 +38,27 @@ return {
       },
     },
   },
+  {
+    -- NEXUS Resume reopens nvim with this plugin's session for the folder.
+    -- LazyVim saves it only when nvim quits cleanly; also save while working
+    -- (when a file is opened or written) so a logout or crash keeps the list
+    -- of open files. Unsaved changes are not part of a session.
+    "folke/persistence.nvim",
+    init = function()
+      local loading = false
+      local group = vim.api.nvim_create_augroup("nexus_persistence", { clear = true })
+      vim.api.nvim_create_autocmd("User", { group = group, pattern = "PersistenceLoadPre", callback = function() loading = true end })
+      vim.api.nvim_create_autocmd("User", { group = group, pattern = "PersistenceLoadPost", callback = function() loading = false end })
+      vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
+        group = group,
+        callback = function(ev)
+          if loading or vim.bo[ev.buf].buftype ~= "" or vim.api.nvim_buf_get_name(ev.buf) == "" then return end
+          vim.schedule(function()
+            local ok, p = pcall(require, "persistence")
+            if ok and p.active() then pcall(p.save) end
+          end)
+        end,
+      })
+    end,
+  },
 }

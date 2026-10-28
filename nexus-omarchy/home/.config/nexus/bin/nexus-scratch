@@ -1,0 +1,68 @@
+#!/bin/bash
+# NEXUS scratch terminal: one persistent kitty + tmux session that drops over
+# whatever you are doing and hides again without losing anything.
+#
+#   nexus-scratch toggle   show it (starting it if needed) or hide it
+#   nexus-scratch show     show it
+#   nexus-scratch hide     hide it (focus returns to the previous window)
+#   nexus-scratch state    hidden | shown | closed, and whether tmux is alive
+#
+# The window lives on Hyprland's special workspace "nexus", so it floats over
+# any workspace and Hyprland hands focus back when it hides. The shell runs in
+# tmux on its own socket (-L nexus-scratch): closing the window keeps the
+# session and its commands, and the next toggle reattaches. Typing `exit`
+# ends it for real.
+
+set -uo pipefail
+CLASS=nexus.scratch
+SPECIAL=nexus
+SOCKET=nexus-scratch
+SESSION=scratch
+CONF=$HOME/.config/nexus/scratch/tmux.conf
+
+client() { hyprctl clients -j | jq -r --arg c "$CLASS" '[.[] | select(.class == $c)][0] // empty | "\(.address) \(.workspace.name)"'; }
+shown() { hyprctl monitors -j | jq -e --arg s "special:$SPECIAL" 'any(.[]; .specialWorkspace.name == $s)' >/dev/null; }
+toggle_special() { hyprctl dispatch "hl.dsp.workspace.toggle_special(\"$SPECIAL\")" >/dev/null; }
+
+launch() {
+  # The window rule in ~/.config/hypr/nexus.lua opens it on special:nexus.
+  setsid uwsm-app -- kitty --class "$CLASS" --title scratch \
+    tmux -L "$SOCKET" -f "$CONF" new-session -A -s "$SESSION" -c "$HOME" >/dev/null 2>&1 9>&- &   # 9>&-: keep the lock out of kitty
+}
+
+show() {
+  read -r addr ws <<<"$(client)"
+  if [[ -z ${addr:-} ]]; then
+    # The rule opens it on the hidden special workspace; wait for it, then show.
+    launch
+    for _ in $(seq 40); do
+      sleep 0.1
+      read -r addr ws <<<"$(client)"
+      [[ -n ${addr:-} ]] && break
+    done
+    [[ -n ${addr:-} ]] || { echo "scratch terminal did not start" >&2; return 1; }
+  fi
+  # Moved out by hand (e.g. SUPER SHIFT 3)? Bring it back before showing.
+  [[ $ws == "special:$SPECIAL" ]] || hyprctl dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"special:$SPECIAL\", follow = false })" >/dev/null
+  shown || toggle_special
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+}
+
+hide() { shown && toggle_special; return 0; }
+
+# One toggle at a time: a second key press while kitty is still starting
+# would otherwise not see the window yet and start another one.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/nexus-scratch.lock"
+flock -w 5 9
+
+case ${1:-toggle} in
+  toggle) if shown && [[ -n $(client) ]]; then hide; else show; fi ;;
+  show) show ;;
+  hide) hide ;;
+  state)
+    if [[ -z $(client) ]]; then w=closed; elif shown; then w=shown; else w=hidden; fi
+    tmux -L "$SOCKET" has-session -t "=$SESSION" 2>/dev/null && t=alive || t=none
+    echo "window: $w · session: $t"
+    ;;
+  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

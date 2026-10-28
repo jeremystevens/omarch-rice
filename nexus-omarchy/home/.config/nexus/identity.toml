@@ -10,3 +10,13 @@ tagline = ""
 # Add them from the menu (p, then a) or with `nexus-project add FOLDER`.
 # name = "path"   (~ is your home folder)
 [projects]
+
+# Terminal greeting in new terminals: "full" (NEXUS mark + project summary),
+# "summary" (no mark) or "off". The shell prompt is not affected.
+[terminal]
+greeting = "full"
+
+# Note folders for search (comma-separated). Without this: ~/Notes or
+# ~/notes if they exist, plus Obsidian vaults.
+# [search]
+# notes = "~/Notes"

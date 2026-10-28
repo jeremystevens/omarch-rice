@@ -2,7 +2,7 @@
 
 Terminal-workbench desktop for Omarchy 4.0.6 / Hyprland 0.56.2, built on an
 Acer Chromebook Spin 13 (1440×960 logical). See the repository README for
-installing.
+installing and GUIDE.md for every feature.
 
 ## Keys
 
@@ -11,14 +11,15 @@ installing.
 | `SUPER ;` | Command menu (open / close) |
 | `SUPER B` | Rail: collapse or expand (remembered) |
 | `SUPER ALT B` | Rail: keyboard focus |
-| Overview key (F5) | Chromebook extra: command menu. `Shift` opens search, `Alt` jobs, `Ctrl` screenshot, `Ctrl Shift` capture menu |
-| Top row | Chromebook extra: back, forward, reload, full screen, brightness, mute, volume, as printed |
-| `SUPER` + top-row key | Chromebook extra: the real F1–F10, sent to the app |
+| `SUPER ` `` (key left of 1) | Scratch terminal: show / hide. Persistent tmux session; `Esc` at the prompt hides it |
+| Overview key (F5) | Command menu. `Shift` opens search, `Alt` jobs, `Ctrl` screenshot, `Ctrl Shift` capture menu |
+| Top row | Back, forward, reload, full screen, brightness, mute, volume, as printed (bound in `bindings.lua`; the kernel sends plain F1–F10 on this board) |
+| `SUPER` + top-row key | The real F1–F10, sent to the app |
 | `SUPER 1`–`5` | Workspaces, as before |
 | Everything else | Unchanged Omarchy bindings (`omarchy menu keybindings --print`) |
 
-None of these keys are bound by Omarchy by default. Printable sheet:
-`docs/NEXUS-KEYS.pdf` in the repository.
+None of these keys are bound by Omarchy by default. The top-row keys come
+with `./install.sh --chromebook`. Printable sheet: `docs/NEXUS-KEYS.pdf`.
 
 ### Command menu
 
@@ -26,9 +27,14 @@ None of these keys are bound by Omarchy by default. Printable sheet:
   windows and `r` recent open a numbered list. `/` enters search. `Esc` closes.
 - **List mode**: `1`–`9`, or `↑ ↓` and `Return`, pick a row. On projects, `e`
   opens nvim there and `f` opens Files. `Esc` goes back to the menu.
-- **Search mode** (`/`): every key is text, and nothing triggers a shortcut. It
-  searches actions, projects, windows and recent files by substring. `↑ ↓`
-  choose, `Return` runs, `Esc` clears and goes back to menu mode.
+- **Search mode** (`/`): every key is text, and nothing triggers a shortcut.
+  Results are grouped: actions, projects, tasks, files (recent files plus
+  file names inside your listed projects), notes (`[search] notes = "..."`
+  in `identity.toml`, else `~/Notes` or Obsidian vaults), sessions, jobs and
+  windows. `↑ ↓` choose, `Return` opens, `Esc` goes back to menu mode.
+  Ignored, hidden and credential files are never shown.
+- **Text inside a project:** `/` in a project's panel, or `Ctrl Return` on a
+  project result. `Return` on a hit opens nvim at the line.
 - Letters: t terminal · p projects · w windows · r recent · e editor ·
   b browser · f files · k clipboard · i wifi · h bluetooth · v volume ·
   n night light · c screenshot · l lock · ? all keys.
@@ -49,6 +55,14 @@ None of these keys are bound by Omarchy by default. Printable sheet:
 - Collapsed, the rail is 44 px with `p`, `w`, `r` and `»`. Tapping a letter
   shows the full rail over the desktop, and tapping outside or pressing `Esc`
   hides it.
+
+## Terminal greeting
+
+New terminals show a two-line NEXUS mark beside the project, its git state,
+tasks, open failures and waiting sessions. tmux panes get the summary only,
+and only inside a project. `[terminal] greeting = "full" | "summary" | "off"`
+in `identity.toml`. It is sourced from `~/.bashrc` (`~/.config/nexus/shell/greeting.bash`),
+uses no network, and leaves the prompt alone.
 
 ## Workspace states (status line)
 
@@ -74,10 +88,12 @@ Only what you write is shown.
 
 | Part | Location |
 |---|---|
-| Theme (colors, shell styling, wallpaper) | `~/.config/omarchy/themes/nexus/` (wallpaper source in `src/wallpaper.py`) |
+| Theme (colors, shell styling, wallpaper) | `~/.config/omarchy/themes/nexus/` (art in `src/art.py`, rebuilt by `src/render.sh`) |
 | Status-line widgets | `~/.config/omarchy/plugins/nexus.{tag,workspaces,readouts}/` |
 | Rail | `~/.config/omarchy/plugins/nexus.rail/` |
 | Command line and menu | `~/.config/omarchy/plugins/nexus.command/` |
+| Lock screen | `~/.config/omarchy/plugins/nexus.lock/` (clone of `omarchy.lock`. Only `LockView.qml` changed: theme `lock.png`, clock, date. Authentication untouched) |
+| Wallpaper / lock art | `~/.config/omarchy/themes/nexus/src/art.py` + `render.sh` (pixel art at 2256×1504) |
 | Notification cards | `~/.config/omarchy/plugins/nexus.notifications/` (a restyled clone of Omarchy's notifications) |
 | Shared code | `~/.config/nexus/lib/Nx.js` |
 | Helpers | `~/.config/nexus/bin/nexus-telemetry`, `nexus-recent` |
@@ -103,7 +119,7 @@ on empty bar space, which a resting finger on the touchscreen can trigger.
 Run `./uninstall.sh` from the repository. It restores the files the installer
 backed up under `~/.local/share/nexus/backup-<stamp>/`.
 
-## Developer workstation (optional extras)
+## Developer workstation
 
 ### Tools
 
@@ -121,7 +137,9 @@ backed up under `~/.local/share/nexus/backup-<stamp>/`.
 1. Add it to `~/.config/nexus/identity.toml` under `[projects]`, for example
    `my-app = "~/Projects/my-app"`. Quote names with spaces: `"my app" = "~/Projects/my app"`.
 2. `SUPER ;` then `p`, then the project's number (or tap it in the rail).
-3. In the project panel: `t` opens a terminal in a tmux session named after
+3. In the project panel: `r` **resumes** (focuses the open terminal,
+   reattaches the session, or rebuilds the saved layout after a reboot,
+   restarting nothing), `d` shows the git diff. `t` opens a terminal in a tmux session named after
    the project (it reattaches if one exists), `e` nvim, `f` Files, `g` lazygit,
    `v` creates `.env` from `.env.example` (mode 600, ignored by git).
 4. The numbered rows are tasks read from the project's manifests. Nothing runs
@@ -136,6 +154,12 @@ to `identity.toml`.
   lockfile), uv projects (`[project.scripts]`, plus pytest and ruff when the
   project uses them), Makefile targets and compose files. Manifests are only
   read; no project code runs during discovery.
+- **Failure inbox (`x`):** each task's latest failure, with its full output
+  (`o`), rerun (`r`), dismiss (`x`), clear history (`c`), and numbered
+  `file:line` references that open nvim at the line. A passing rerun
+  resolves the failure. Stopped or Ctrl-C'd tasks count as cancelled, not
+  failed. Runs and logs are kept in `~/.local/state/nexus/runs/`, at most
+  1 MiB per log and 50 MiB in total.
 - A task runs in its own window of the tmux session `nexus-tasks`. Its
   output stays after it exits.
 - `j` (jobs): live output of the selected job. `Return` opens the full

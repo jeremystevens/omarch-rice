@@ -53,6 +53,7 @@ function shellToggle(id) { return ["omarchy-shell", "shell", "toggle", id, "{}"]
 // Menu-mode actions. `list` opens a numbered sub-list instead of running.
 var actions = [
   { key: "t", label: "terminal",    run: ["omarchy-launch-terminal"] },
+  { key: "`", label: "scratch terminal", run: ["sh", "-c", "exec \"$HOME/.config/nexus/bin/nexus-scratch\" toggle"] },
   { key: "p", label: "projects",    list: "projects" },
   { key: "w", label: "windows",     list: "windows" },
   { key: "r", label: "recent",      list: "recent" },
@@ -68,6 +69,7 @@ var actions = [
   { key: "l", label: "lock",        run: ["omarchy-system-lock"] },
   { key: "s", label: "sessions",    list: "sessions" },
   { key: "j", label: "jobs",        list: "jobs" },
+  { key: "x", label: "failures",    list: "failures" },
   { key: "d", label: "dev toolbox", list: "toolbox" },
   { key: "?", label: "all keys",    run: ["omarchy-menu-keybindings"] }
 ]
@@ -206,21 +208,73 @@ function gitSummary(g) {
   if (g.untracked) parts.push(g.untracked + " new")
   return head + " · " + parts.join(" · ")
 }
+// Compact form for project rows: "main ●3 ↑1", "main ✓", "detached a1b2c3d ●1".
+function gitCompact(g) {
+  if (!g) return ""
+  var out = g.detached ? "detached " + g.commit : g.branch
+  var changes = g.staged + g.unstaged + g.untracked
+  if (g.conflicted) out += " !" + g.conflicted
+  if (changes) out += " ●" + changes
+  if (!g.conflicted && !changes) out += " ✓"
+  if (g.ahead) out += " ↑" + g.ahead
+  if (g.behind) out += " ↓" + g.behind
+  return out
+}
+// Project tmux session: open in a terminal, running in the background, or
+// only a saved layout Resume can rebuild.
+function sessionMark(s) {
+  if (!s) return ""
+  if (s.attached) return "▶ open"
+  if (s.live) return "◆ running"
+  if (s.saved) return "◇ saved"
+  return ""
+}
+// One-line project row text: git, session, or the path when there is neither.
+function projectSub(inf, path) {
+  if (inf && !inf.exists) return "missing · " + path
+  if (!inf) return path
+  var parts = []
+  if (inf.git) parts.push(gitCompact(inf.git))
+  var m = sessionMark(inf.session)
+  if (m) parts.push(m)
+  return parts.length ? parts.join("  ·  ") : path
+}
+
 function gitColor(g) {
   if (!g) return color.dim
   if (g.conflicted) return color.red
   return g.clean ? color.dim : color.amber
 }
 
+// Failure inbox: a run that failed and nobody resolved, dismissed or
+// superseded yet.
+function isOpenFailure(r) {
+  return r.status === "failed" && !r.resolved_at && !r.dismissed_at && !r.superseded_by
+}
+function clock(epoch) {
+  var d = new Date(epoch * 1000)
+  var hh = d.getHours(), mm = d.getMinutes()
+  var today = new Date().toDateString() === d.toDateString()
+  return (today ? "" : (d.getMonth() + 1) + "/" + d.getDate() + " ") + (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm
+}
+function failureFate(r) {
+  if (r.resolved_at) return "resolved " + clock(r.resolved_at) + " by a passing run"
+  if (r.superseded_by) return "replaced by a newer failure"
+  if (r.dismissed_at) return "dismissed " + clock(r.dismissed_at)
+  return ""
+}
+
 // State of a task started through nexus-task.
 function jobState(j) {
   if (j.running) return "running"
+  if (j.state === "cancelled") return "cancelled"
   if (j.exitCode === 0) return "done"
   if (j.exitCode === null || j.exitCode === undefined) return "stopped"
   return "exit " + j.exitCode
 }
 function jobColor(j) {
   if (j.running) return color.phos
+  if (j.state === "cancelled") return color.grey
   if (j.exitCode === 0) return color.dim
   if (j.exitCode === null || j.exitCode === undefined) return color.grey
   return color.amber

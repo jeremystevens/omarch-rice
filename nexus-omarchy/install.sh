@@ -73,9 +73,25 @@ add_bindings() {
   rm -f "$target.tmp"
 }
 
+# Append (or replace) a marked block of lines at the end of a file.
+add_block() {
+  local name=$1 target=$2 comment=$3 content=$4
+  local begin="$comment >>> $name (added by NEXUS install.sh)" end="$comment <<< $name"
+  if ((dry)); then echo "  would: add the $name block to $target"; return; fi
+  touch "$target"
+  local rel=${target#"$HOME"/}
+  [[ -e $BACKUP/files/$rel ]] || { mkdir -p "$(dirname "$BACKUP/files/$rel")"; cp -a "$target" "$BACKUP/files/$rel"; }
+  awk -v b="$begin" -v e="$end" 'index($0, b) == 1 { skip = 1 } !skip { print } index($0, e) == 1 { skip = 0 }' "$target" |
+    sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' >"$target.tmp"
+  { cat "$target.tmp"; printf '\n%s\n%s\n%s\n' "$begin" "$content" "$end"; } >"$target"
+  rm -f "$target.tmp"
+}
+
 say "Installing NEXUS (backup: ${BACKUP/#$HOME/~})"
 install_tree "$REPO/home"
 add_bindings "NEXUS keys" "$REPO/home/.config/hypr/nexus-bindings.lua"
+add_block "NEXUS window rules" "$HOME/.config/hypr/hyprland.lua" "--" 'require("hypr.nexus")'
+add_block "NEXUS greeting" "$HOME/.bashrc" "#" '[[ -r ~/.config/nexus/shell/greeting.bash ]] && source ~/.config/nexus/shell/greeting.bash'
 run chmod +x "$HOME"/.config/nexus/bin/*
 run mkdir -p "$HOME/.local/bin"
 run ln -sf "$HOME/.config/nexus/bin/nexus-project" "$HOME/.local/bin/nexus-project"
@@ -107,6 +123,7 @@ run fc-cache -f "$HOME/.local/share/fonts/nexus" >/dev/null 2>&1 || true
 if ((apply)) && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
   say "Applying"
   omarchy theme set nexus || warn "could not switch theme; run: omarchy theme set nexus"
+  omarchy theme bg set "$HOME/.local/state/omarchy/current/theme/backgrounds/1-nexus.png" >/dev/null 2>&1 || true
   hyprctl reload >/dev/null && { errs=$(hyprctl configerrors); [[ -z $errs || $errs == *"no errors"* ]] || warn "Hyprland config errors: $errs"; }
   omarchy restart shell >/dev/null 2>&1 || warn "run: omarchy restart shell"
 fi

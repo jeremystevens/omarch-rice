@@ -23,6 +23,8 @@ git clone https://github.com/jeremystevens/omarch-rice ~/omarch-rice
 | `system/libinput/local-overrides.quirks` | Keeps "ignore the touchpad while typing" working with keyd (copied to `/etc/libinput`) |
 | `home/.local/bin/tablet-mode`, `home/.config/hypr/tablet.lua` | Tablet mode: auto-rotate and on-screen keyboard when the screen is folded back |
 | `home/.config/omarchy/plugins/tablet.keyboard/` | Bar button that shows or hides the on-screen keyboard (only in tablet mode) |
+| `home/.config/omarchy/hooks/theme-set.d/doom-emacs` | Recolours an open Doom Emacs when you switch Omarchy themes |
+| `home/.config/atuin/`, `home/.config/lazygit/` | atuin history search (Ctrl+R, local only); lazygit diffs through delta |
 
 Only files I've actually changed are here. Everything still at Omarchy's defaults (starship, tmux, nvim,
 terminals, btop) is left to Omarchy, so its updates keep working. Hyprland, the bar and the theme are
@@ -81,6 +83,15 @@ Fold the screen back and the Spin 13 turns into a tablet:
 `tablet-mode status` shows the current state; `tablet-mode rotate normal` straightens the screen by
 hand. Hyprland can't tell whether the screen is already folded when you log in, so a session starts
 in laptop mode and catches up at the next fold or unfold.
+
+## Following the Omarchy theme
+Switch themes with `omarchy theme set <name>` and everything changes together:
+
+- **Terminals, btop, Hyprland, the bar:** Omarchy itself.
+- **starship, fastfetch, lazygit, atuin, delta:** they use the terminal's colours, so they follow it.
+- **Doom Emacs:** `config.el` reads the theme's `colors.toml` and recolours the main faces on top of
+  `doom-one` (or `doom-one-light` for light themes). The `theme-set.d/doom-emacs` hook makes an open
+  Emacs do it straight away; `M-x +omarchy-apply-colors` does the same by hand.
 
 ## Day to day
 Because the files are symlinks, editing `~/.config/doom/config.el` edits this repo. `git status` in

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Recolour a running Doom Emacs for the new Omarchy theme (omarch-rice/dotfiles).
+# Doom reads the theme's colors.toml itself; this only tells an open Emacs to do it now.
+command -v emacsclient >/dev/null || exit 0
+timeout 5 emacsclient --eval '(when (fboundp (quote +omarchy-apply-colors)) (+omarchy-apply-colors))' >/dev/null 2>&1 || true

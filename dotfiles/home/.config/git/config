@@ -42,6 +42,7 @@
 	navigate = true          # n / N jump between files
 	line-numbers = true
 	dark = true
+	syntax-theme = ansi      # Use the terminal's colours, so diffs follow the Omarchy theme
 
 # Name, email and credential helpers live in ~/.gitconfig, which is NOT in this repo.
 # `git config --global ...` writes there too, so nothing personal lands here by accident.

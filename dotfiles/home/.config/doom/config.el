@@ -129,3 +129,94 @@
 
 ;; The ⟳ key: reload the file from disk (asks first if the buffer has changes).
 (map! "<XF86Reload>" #'revert-buffer-quick)
+
+;;; Omarchy theme colours ---------------------------------------------------------
+;; Doom follows the Omarchy theme: doom-one (doom-one-light for light themes) as the base,
+;; with the main faces recoloured from the current theme's colors.toml. When you switch
+;; Omarchy themes, a theme-set hook (omarchy-rice/dotfiles) re-runs this in the open Emacs.
+
+(defvar +omarchy-colors-file
+  (expand-file-name "~/.local/state/omarchy/current/theme/colors.toml")
+  "The active Omarchy theme's colours.")
+
+(defun +omarchy-read-colors ()
+  "Return the colours in `+omarchy-colors-file' as an alist of (KEY . VALUE)."
+  (when (file-readable-p +omarchy-colors-file)
+    (with-temp-buffer
+      (insert-file-contents +omarchy-colors-file)
+      (let (colors)
+        (while (re-search-forward
+                "^\\([a-z_]+\\)[ \t]*=[ \t]*\"\\(#[0-9a-fA-F]\\{6\\}\\|dark\\|light\\)\"" nil t)
+          (push (cons (intern (match-string 1)) (match-string 2)) colors))
+        colors))))
+
+(defun +omarchy-apply-colors ()
+  "Recolour Doom from the current Omarchy theme."
+  (interactive)
+  (when-let* ((c (+omarchy-read-colors))
+              (bg (alist-get 'background c))
+              (fg (alist-get 'foreground c)))
+    (let* ((get (lambda (key fallback) (or (alist-get key c) fallback)))
+           (light (equal (alist-get 'mode c) "light"))
+           (base (if light 'doom-one-light 'doom-one))
+           (accent  (funcall get 'accent (alist-get 'blue c)))
+           (sel     (funcall get 'selection accent))
+           (comment (funcall get 'dark_foreground fg))
+           (panel   (funcall get 'lighter_background bg))
+           (deep    (funcall get 'dark_background bg))
+           (border  (funcall get 'muted comment))
+           (red     (funcall get 'red fg))     (green (funcall get 'green fg))
+           (yellow  (funcall get 'yellow fg))  (orange (funcall get 'orange yellow))
+           (blue    (funcall get 'blue fg))    (cyan (funcall get 'cyan blue))
+           (magenta (funcall get 'magenta blue)))
+      ;; Light and dark themes need a matching base for everything not set below.
+      (unless (custom-theme-enabled-p base)
+        (let ((doom-load-theme-hook (remq '+omarchy-apply-colors doom-load-theme-hook)))
+          (setq doom-theme base)
+          (load-theme base t)))
+      (custom-theme-set-faces
+       'user
+       `(default ((t (:background ,bg :foreground ,fg))))
+       `(cursor ((t (:background ,accent))))
+       `(region ((t (:background ,sel :extend t))))
+       `(hl-line ((t (:background ,panel :extend t))))
+       `(fringe ((t (:background ,bg))))
+       `(vertical-border ((t (:foreground ,border))))
+       `(window-divider ((t (:foreground ,border))))
+       `(line-number ((t (:foreground ,comment :background ,bg))))
+       `(line-number-current-line ((t (:foreground ,accent :background ,panel :weight bold))))
+       `(mode-line ((t (:background ,deep :foreground ,fg :box nil))))
+       `(mode-line-inactive ((t (:background ,bg :foreground ,comment :box nil))))
+       `(doom-modeline-bar ((t (:background ,accent))))
+       `(minibuffer-prompt ((t (:foreground ,accent :weight bold))))
+       `(link ((t (:foreground ,blue :underline t))))
+       `(show-paren-match ((t (:background ,sel :foreground ,accent :weight bold))))
+       `(isearch ((t (:background ,accent :foreground ,bg :weight bold))))
+       `(lazy-highlight ((t (:background ,sel :foreground ,fg))))
+       `(success ((t (:foreground ,green))))
+       `(warning ((t (:foreground ,yellow))))
+       `(error ((t (:foreground ,red))))
+       `(font-lock-comment-face ((t (:foreground ,comment :slant italic))))
+       `(font-lock-doc-face ((t (:foreground ,comment :slant italic))))
+       `(font-lock-keyword-face ((t (:foreground ,magenta))))
+       `(font-lock-builtin-face ((t (:foreground ,cyan))))
+       `(font-lock-function-name-face ((t (:foreground ,blue))))
+       `(font-lock-function-call-face ((t (:foreground ,blue))))
+       `(font-lock-string-face ((t (:foreground ,green))))
+       `(font-lock-type-face ((t (:foreground ,yellow))))
+       `(font-lock-constant-face ((t (:foreground ,orange))))
+       `(font-lock-number-face ((t (:foreground ,orange))))
+       `(font-lock-variable-name-face ((t (:foreground ,fg))))
+       `(font-lock-warning-face ((t (:foreground ,yellow :weight bold))))
+       `(vertico-current ((t (:background ,sel :extend t))))
+       `(corfu-default ((t (:background ,deep :foreground ,fg))))
+       `(corfu-current ((t (:background ,sel :foreground ,fg))))
+       `(corfu-border ((t (:background ,border))))))))
+
+(add-hook 'doom-load-theme-hook #'+omarchy-apply-colors)
+
+;; Let `emacsclient' reach this Emacs, so the theme hook can recolour it.
+(add-hook 'doom-after-init-hook
+          (lambda ()
+            (require 'server)
+            (unless (or (daemonp) (server-running-p)) (server-start))))

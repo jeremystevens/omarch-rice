@@ -38,9 +38,9 @@ handled by [NEXUS](../nexus-omarchy).
 | `tools` | `mise install`, then the uv tools |
 | `fonts` | Symbola (the symbol font Doom Emacs asks for), checksum-verified |
 | `keyd` | Chromebook only (`--chromebook`, or name the step): installs keyd and its config, see below |
-| `tablet` | Chromebook only: installs iio-sensor-proxy and wvkbd (AUR), hooks tablet mode into Hyprland, adds the bar button |
 | `doom` | Clones and installs Doom Emacs if missing, otherwise `doom sync` |
 | `nexus` | Runs `../nexus-omarchy/install.sh` (`--chromebook` is passed on) |
+| `tablet` | Chromebook only: installs iio-sensor-proxy and wvkbd (AUR), hooks tablet mode into Hyprland, adds the bar button (after `nexus`, which replaces `shell.json`) |
 | `aiterm` | Runs `../ai-terminal-companion/install.sh` |
 
 ```bash

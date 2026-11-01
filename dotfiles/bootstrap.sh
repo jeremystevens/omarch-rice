@@ -14,10 +14,11 @@
 #   fonts     Symbola, the symbol fallback font Doom Emacs asks for
 #   keyd      Chromebook keys: Delete, Home, End, PgUp/PgDn, F11/F12 on a right-Alt layer
 #             (system/keyd/default.conf → /etc/keyd; full runs only with --chromebook)
-#   tablet    Chromebook tablet mode: auto-rotate and on-screen keyboard when folded
-#             (installs iio-sensor-proxy and wvkbd; full runs only with --chromebook)
 #   doom      install Doom Emacs if it's missing, then doom sync
 #   nexus     the NEXUS theme (../nexus-omarchy/install.sh)
+#   tablet    Chromebook tablet mode: auto-rotate and on-screen keyboard when folded
+#             (iio-sensor-proxy, wvkbd; full runs only with --chromebook). Runs after nexus,
+#             because NEXUS's installer replaces shell.json and would drop the bar button.
 #   aiterm    AI Terminal Companion (../ai-terminal-companion/install.sh)
 #
 # Options:
@@ -35,7 +36,7 @@ REPO=$(cd "$(dirname "$0")" && pwd)
 RICE=$(dirname "$REPO")
 FILES=$REPO/home
 BACKUP=$HOME/.local/share/dotfiles/backup-$(date +%Y%m%d-%H%M%S)
-ALL_STEPS=(packages link tools fonts keyd tablet doom nexus aiterm)
+ALL_STEPS=(packages link tools fonts keyd doom nexus tablet aiterm)
 
 dry=0 chromebook=0 steps=() adopt=()
 mode=steps
@@ -43,7 +44,7 @@ for arg in "$@"; do
   case $arg in
     --dry-run) dry=1 ;;
     --chromebook) chromebook=1 ;;
-    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     status) mode=status ;;
     adopt) mode=adopt ;;
     -*) echo "Unknown option: $arg" >&2; exit 1 ;;

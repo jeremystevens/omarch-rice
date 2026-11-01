@@ -19,6 +19,7 @@ git clone https://github.com/jeremystevens/omarch-rice ~/omarch-rice
 | `home/.config/mise/config.toml` | Language runtimes and CLIs managed by mise (node, python, gh, ruff, …) |
 | `packages/pacman.txt` | Packages I add on top of Omarchy's own |
 | `packages/uv-tools.txt` | Python CLIs installed with `uv tool install` |
+| `system/keyd/default.conf` | Chromebook keyboard: the missing keys on a right-Alt layer (copied to `/etc/keyd`, not linked) |
 
 Only files I've actually changed are here. Everything still at Omarchy's defaults (starship, tmux, nvim,
 terminals, btop) is left to Omarchy, so its updates keep working. Hyprland, the bar and the theme are
@@ -31,6 +32,7 @@ handled by [NEXUS](../nexus-omarchy).
 | `link` | Symlinks everything in `home/` into `~`, moves git name/email/credentials to `~/.gitconfig` (asks on a new machine), adds a marked block to `~/.bashrc` |
 | `tools` | `mise install`, then the uv tools |
 | `fonts` | Symbola (the symbol font Doom Emacs asks for), checksum-verified |
+| `keyd` | Chromebook only (`--chromebook`, or name the step): installs keyd and its config, see below |
 | `doom` | Clones and installs Doom Emacs if missing, otherwise `doom sync` |
 | `nexus` | Runs `../nexus-omarchy/install.sh` (`--chromebook` is passed on) |
 | `aiterm` | Runs `../ai-terminal-companion/install.sh` |
@@ -46,6 +48,20 @@ handled by [NEXUS](../nexus-omarchy).
   they're already installed; name the step (`./bootstrap.sh nexus`) to reinstall.
 - `adopt` refuses files that look like secrets (`.env`, keys, tokens, `.gitconfig`, …), but always look at
   a new file before committing: this repo is public.
+
+## Chromebook keys (keyd)
+The Acer Spin 13 keyboard has no Delete, Home, End, Page Up/Down, F11 or F12. Hold **right Alt**:
+
+| right Alt + | Gives |
+| --- | --- |
+| Backspace | Delete |
+| ← / → | Home / End |
+| ↑ / ↓ | Page Up / Page Down |
+| `-` / `=` | F11 / F12 |
+
+Shift and Ctrl still combine (Shift + right Alt + → selects to the end of the line); left Alt is unchanged.
+Search + arrows stay with Hyprland. After editing the config: `./bootstrap.sh keyd` (or `sudo keyd reload`).
+If the keyboard ever stops responding, press Backspace + Escape + Enter together to stop keyd.
 
 ## Day to day
 Because the files are symlinks, editing `~/.config/doom/config.el` edits this repo. `git status` in

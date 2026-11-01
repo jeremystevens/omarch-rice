@@ -12,12 +12,15 @@
 #             add a block to ~/.bashrc that loads ~/.config/bash/dotfiles.bash
 #   tools     mise tools (~/.config/mise/config.toml) and uv tools (packages/uv-tools.txt)
 #   fonts     Symbola, the symbol fallback font Doom Emacs asks for
+#   keyd      Chromebook keys: Delete, Home, End, PgUp/PgDn, F11/F12 on a right-Alt layer
+#             (system/keyd/default.conf → /etc/keyd; full runs only with --chromebook)
 #   doom      install Doom Emacs if it's missing, then doom sync
 #   nexus     the NEXUS theme (../nexus-omarchy/install.sh)
 #   aiterm    AI Terminal Companion (../ai-terminal-companion/install.sh)
 #
 # Options:
-#   --chromebook  also the Chromebook bits of NEXUS (top-row keys, touchscreen fix)
+#   --chromebook  also the keyd step and the Chromebook bits of NEXUS (top-row keys,
+#                 touchscreen fix)
 #   --dry-run     show what would change, change nothing
 #
 # A full run skips NEXUS and aiterm if they're already installed; name the step to reinstall.
@@ -30,7 +33,7 @@ REPO=$(cd "$(dirname "$0")" && pwd)
 RICE=$(dirname "$REPO")
 FILES=$REPO/home
 BACKUP=$HOME/.local/share/dotfiles/backup-$(date +%Y%m%d-%H%M%S)
-ALL_STEPS=(packages link tools fonts doom nexus aiterm)
+ALL_STEPS=(packages link tools fonts keyd doom nexus aiterm)
 
 dry=0 chromebook=0 steps=() adopt=()
 mode=steps
@@ -38,7 +41,7 @@ for arg in "$@"; do
   case $arg in
     --dry-run) dry=1 ;;
     --chromebook) chromebook=1 ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     status) mode=status ;;
     adopt) mode=adopt ;;
     -*) echo "Unknown option: $arg" >&2; exit 1 ;;
@@ -211,6 +214,23 @@ step_fonts() {
   rm -rf "$tmp"
   fc-cache -f "$dir" >/dev/null
   note "installed to $dir"
+}
+
+step_keyd() {
+  say "Chromebook keys (keyd)"
+  if ((!explicit && !chromebook)); then note "skipped (Chromebook only: add --chromebook, or run ./bootstrap.sh keyd)"; return; fi
+  local conf=$REPO/system/keyd/default.conf dst=/etc/keyd/default.conf
+  pacman -Qq keyd >/dev/null 2>&1 || run sudo pacman -S --needed keyd
+  if cmp -s "$conf" "$dst"; then
+    note "config already installed"
+  else
+    [[ -e $dst ]] && run sudo cp "$dst" "$dst.bak-$(date +%Y%m%d-%H%M%S)"
+    run sudo install -Dm644 "$conf" "$dst"
+    ((dry)) || note "installed $dst"
+  fi
+  if systemctl is-active --quiet keyd; then run sudo keyd reload; else run sudo systemctl enable --now keyd; fi
+  note "Hold right Alt: Backspace = Delete, arrows = Home/End/PgUp/PgDn, minus/equals = F11/F12."
+  note "Stuck keyboard? Backspace + Escape + Enter together stops keyd."
 }
 
 step_doom() {

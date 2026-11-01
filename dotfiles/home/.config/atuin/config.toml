@@ -1,0 +1,19 @@
+# atuin: shell history search on Ctrl+R (omarch-rice/dotfiles). History stays on this machine:
+# no account, no sync. Full reference: https://docs.atuin.sh/configuration/config/
+
+auto_sync = false
+update_check = false
+
+# Ctrl+R opens a compact search under the prompt; the up arrow keeps its normal behaviour.
+style = "compact"
+inline_height = 18
+search_mode = "fuzzy"
+filter_mode = "global"
+# Enter puts the command on the prompt to check or edit; Enter again runs it.
+enter_accept = false
+show_preview = true
+
+# Don't record commands that look like they contain secrets (tokens, keys, passwords).
+secrets_filter = true
+# Lines starting with a space are never saved, same as bash's ignorespace.
+history_filter = ["^ "]

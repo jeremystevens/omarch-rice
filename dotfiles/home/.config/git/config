@@ -31,6 +31,17 @@
 	required = true
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
+[merge]
+	conflictStyle = zdiff3   # Show the common ancestor in conflicts
+[core]
+	# Readable diffs with git-delta when it's installed, the normal pager otherwise.
+	pager = "command -v delta >/dev/null && exec delta || exec less -FRX"
+[interactive]
+	diffFilter = "command -v delta >/dev/null && exec delta --color-only || exec cat"
+[delta]
+	navigate = true          # n / N jump between files
+	line-numbers = true
+	dark = true
 
 # Name, email and credential helpers live in ~/.gitconfig, which is NOT in this repo.
 # `git config --global ...` writes there too, so nothing personal lands here by accident.

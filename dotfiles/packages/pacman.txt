@@ -2,6 +2,9 @@
 # One per line; anything after # is ignored. Installed with: sudo pacman -S --needed
 
 # Development
+atuin            # shell history search (Ctrl+R)
+bash-preexec     # needed by atuin in bash
+git-delta        # readable git diffs
 cmake
 emacs            # Doom Emacs
 git-lfs

@@ -1,0 +1,4 @@
+# lazygit (omarch-rice/dotfiles): show diffs through delta, like git does.
+git:
+  pagers:
+    - pager: delta --dark --paging=never

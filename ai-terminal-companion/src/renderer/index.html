@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>AI Terminal Companion</title>
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <button id="topbar" type="button" title="Open or close the AI Companion">
+    <span id="status-dot" class="dot"></span>
+    <span class="bar-title">AI Companion</span>
+    <span class="chevron">▾</span>
+    <span class="bar-hint">click or press <kbd class="hotkey">F1</kbd></span>
+  </button>
+
+  <div id="terminal"></div>
+
+  <section id="panel" aria-hidden="true">
+    <header>
+      <span id="cwd" class="cwd" title="Current directory sent to the AI"></span>
+      <label class="toggle" title="Send the last lines of terminal output with your question">
+        <input type="checkbox" id="include-output" checked> include terminal output
+      </label>
+      <button id="explain-btn" class="ghost" title="Ask about the most recent output">Explain last output</button>
+      <button id="clear-btn" class="ghost" title="Clear conversation">Clear</button>
+      <button id="close-btn" class="ghost" title="Close (Esc)">✕</button>
+    </header>
+    <div id="messages">
+      <div class="hint">
+        Ask anything about your terminal. Suggested commands appear with <b>Insert</b> (puts it on your prompt line) and
+        <b>Run</b>. Nothing runs unless you click. <kbd class="hotkey">F1</kbd> toggles this panel, <kbd>Esc</kbd> closes it.
+      </div>
+    </div>
+    <form id="ask-form">
+      <textarea id="input" rows="1" placeholder="Ask the companion… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button type="submit" id="send-btn">Send</button>
+    </form>
+    <div id="resize-handle" title="Drag to resize"></div>
+  </section>
+
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

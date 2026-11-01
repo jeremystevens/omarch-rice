@@ -1,0 +1,35 @@
+# Packages installed on top of Omarchy (its own package list isn't repeated here).
+# One per line; anything after # is ignored. Installed with: sudo pacman -S --needed
+
+# Development
+cmake
+emacs            # Doom Emacs
+git-lfs
+httpie
+podman
+tidy
+tree
+wget
+7zip
+
+# Writing / docs
+discount         # markdown
+pandoc-cli
+
+# Editors and terminals
+kate
+kitty
+nano
+visual-studio-code-bin
+
+# AI tools
+claude-code
+openai-codex-desktop
+
+# Apps
+signal-desktop
+spotify
+telegram-desktop
+
+# Fonts
+ttf-nerd-fonts-symbols-mono

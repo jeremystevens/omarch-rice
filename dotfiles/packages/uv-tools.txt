@@ -1,0 +1,2 @@
+# Python command-line tools installed with `uv tool install` (isolated, never system pip).
+basedpyright     # Python language server for Doom Emacs (Eglot)

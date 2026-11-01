@@ -1,4 +1,23 @@
-# Notes for Claude Code: kept local, never published
+# Local notes and tool settings
 CLAUDE.md
 CLAUDE.local.md
 .claude/
+
+# Build output and dependencies
+node_modules/
+dist/
+__pycache__/
+*.pyc
+
+# Editor and backup files
+*~
+*.swp
+.#*
+\#*#
+*.bak
+*.bak-*
+*.bak.*
+*.orig
+
+# System
+.DS_Store

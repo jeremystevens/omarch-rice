@@ -14,12 +14,14 @@
 #   fonts     Symbola, the symbol fallback font Doom Emacs asks for
 #   keyd      Chromebook keys: Delete, Home, End, PgUp/PgDn, F11/F12 on a right-Alt layer
 #             (system/keyd/default.conf → /etc/keyd; full runs only with --chromebook)
+#   tablet    Chromebook tablet mode: auto-rotate and on-screen keyboard when folded
+#             (installs iio-sensor-proxy and wvkbd; full runs only with --chromebook)
 #   doom      install Doom Emacs if it's missing, then doom sync
 #   nexus     the NEXUS theme (../nexus-omarchy/install.sh)
 #   aiterm    AI Terminal Companion (../ai-terminal-companion/install.sh)
 #
 # Options:
-#   --chromebook  also the keyd step and the Chromebook bits of NEXUS (top-row keys,
+#   --chromebook  also the keyd and tablet steps and the Chromebook bits of NEXUS (top-row keys,
 #                 touchscreen fix)
 #   --dry-run     show what would change, change nothing
 #
@@ -33,7 +35,7 @@ REPO=$(cd "$(dirname "$0")" && pwd)
 RICE=$(dirname "$REPO")
 FILES=$REPO/home
 BACKUP=$HOME/.local/share/dotfiles/backup-$(date +%Y%m%d-%H%M%S)
-ALL_STEPS=(packages link tools fonts keyd doom nexus aiterm)
+ALL_STEPS=(packages link tools fonts keyd tablet doom nexus aiterm)
 
 dry=0 chromebook=0 steps=() adopt=()
 mode=steps
@@ -41,7 +43,7 @@ for arg in "$@"; do
   case $arg in
     --dry-run) dry=1 ;;
     --chromebook) chromebook=1 ;;
-    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     status) mode=status ;;
     adopt) mode=adopt ;;
     -*) echo "Unknown option: $arg" >&2; exit 1 ;;
@@ -228,9 +230,58 @@ step_keyd() {
     run sudo install -Dm644 "$conf" "$dst"
     ((dry)) || note "installed $dst"
   fi
-  if systemctl is-active --quiet keyd; then run sudo keyd reload; else run sudo systemctl enable --now keyd; fi
+  # Without this, libinput doesn't see keyd's keyboard as built-in and stops ignoring the
+  # touchpad while you type. libinput reads it when a device appears, hence the restart.
+  local quirks=$REPO/system/libinput/local-overrides.quirks qdst=/etc/libinput/local-overrides.quirks restart=0
+  if ! cmp -s "$quirks" "$qdst"; then
+    [[ -e $qdst ]] && run sudo cp "$qdst" "$qdst.bak-$(date +%Y%m%d-%H%M%S)"
+    run sudo install -Dm644 "$quirks" "$qdst"
+    restart=1
+  fi
+  if ! systemctl is-active --quiet keyd; then run sudo systemctl enable --now keyd
+  elif ((restart)); then run sudo systemctl restart keyd
+  else run sudo keyd reload
+  fi
   note "Hold right Alt: Backspace = Delete, arrows = Home/End/PgUp/PgDn, minus/equals = F11/F12."
   note "Stuck keyboard? Backspace + Escape + Enter together stops keyd."
+}
+
+# Add (or refresh) a marked block at the end of a file, like the NEXUS installer does.
+add_block() {
+  local name=$1 target=$2 comment=$3 content=$4
+  local begin="$comment >>> $name (omarch-rice dotfiles)" end="$comment <<< $name"
+  if grep -qxF -- "$begin" "$target" 2>/dev/null; then return; fi
+  if ((dry)); then note "would add the $name block to ${target/#"$HOME"/\~}"; return; fi
+  printf '\n%s\n%s\n%s\n' "$begin" "$content" "$end" >>"$target"
+  note "added the $name block to ${target/#"$HOME"/\~}"
+}
+
+step_tablet() {
+  say "Tablet mode (auto-rotate, on-screen keyboard)"
+  if ((!explicit && !chromebook)); then note "skipped (Chromebook only: add --chromebook, or run ./bootstrap.sh tablet)"; return; fi
+  pacman -Qq iio-sensor-proxy >/dev/null 2>&1 || run sudo pacman -S --needed iio-sensor-proxy
+  if ! pacman -Qq wvkbd >/dev/null 2>&1; then
+    if command -v yay >/dev/null; then
+      run yay -S --needed wvkbd || warn "wvkbd didn't install; everything else works. Install it later with: yay -S wvkbd"
+    else warn "wvkbd is in the AUR and yay isn't installed; skipping the keyboard"; fi
+  fi
+  [[ -L $HOME/.config/hypr/tablet.lua ]] || link_one .config/hypr/tablet.lua
+  [[ -L $HOME/.local/bin/tablet-mode ]] || link_one .local/bin/tablet-mode
+  add_block "Tablet mode" "$HOME/.config/hypr/hyprland.lua" "--" 'require("hypr.tablet")'
+  # The bar button that shows/hides the keyboard (only visible in tablet mode).
+  for f in manifest.json Widget.qml; do
+    [[ -L $HOME/.config/omarchy/plugins/tablet.keyboard/$f ]] || link_one ".config/omarchy/plugins/tablet.keyboard/$f"
+  done
+  if ((!dry)) && command -v omarchy >/dev/null && ! jq -e '.bar.layout.right[]? | select(.id == "tablet.keyboard")' "$HOME/.config/omarchy/shell.json" >/dev/null 2>&1; then
+    omarchy-shell -q shell rescanPlugins
+    omarchy plugin enable tablet.keyboard >/dev/null && omarchy bar put tablet.keyboard --section right --index 0 >/dev/null && note "added the keyboard button to the bar"
+  fi
+  # Start the rotation follower now too (Hyprland starts it at every login from then on).
+  if ((!dry)) && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprctl reload >/dev/null && hyprctl configerrors
+    setsid -f "$HOME/.local/bin/tablet-mode" daemon >/dev/null 2>&1
+  fi
+  note "Fold the screen back to try it; tablet-mode status shows the state."
 }
 
 step_doom() {

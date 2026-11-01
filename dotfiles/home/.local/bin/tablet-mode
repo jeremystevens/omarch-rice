@@ -1,0 +1,102 @@
+#!/bin/bash
+# Tablet mode for a convertible laptop on Hyprland (made for the Acer Chromebook Spin 13).
+#
+#   tablet-mode on | off          what folding / unfolding the screen runs (Hyprland switch binds)
+#   tablet-mode daemon            follows the accelerometer; rotates only while in tablet mode
+#   tablet-mode rotate ORIENT     normal | left-up | right-up | bottom-up
+#   tablet-mode keyboard [show|hide|toggle]   the on-screen keyboard (wvkbd)
+#   tablet-mode status
+#
+# In laptop mode the screen never rotates, however the laptop is tilted. Needs iio-sensor-proxy
+# (monitor-sensor) for rotation and wvkbd for the keyboard; `bootstrap.sh tablet` installs both.
+# Hyprland can't report the switch's position at login, so a session starts in laptop mode
+# and catches up at the next fold or unfold.
+
+set -uo pipefail
+
+RUN=${XDG_RUNTIME_DIR:-/tmp}/tablet-mode
+FLAG=$RUN/on              # exists while folded
+ORIENT=$RUN/orientation   # last orientation the accelerometer reported
+mkdir -p "$RUN"
+
+OUTPUT=${TABLET_OUTPUT:-eDP-1}
+KEYBOARD=wvkbd-mobintl
+# NEXUS colours: charcoal keys, off-white text, phosphor green when pressed.
+KEYBOARD_ARGS=(--bg 0c0e0dee --fg 1c1f1d --fg-sp 151816 --press 4dff88 --press-sp 4dff88
+               --text e9e6dc --text-sp 868980 -H 320 -L 260)
+
+transform_for() {
+  case $1 in
+    normal) echo 0 ;; left-up) echo 1 ;; bottom-up) echo 2 ;; right-up) echo 3 ;;
+    *) return 1 ;;
+  esac
+}
+
+rotate() {
+  local t
+  t=$(transform_for "$1") || { echo "Unknown orientation: $1" >&2; return 1; }
+  [[ $OUTPUT =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Bad output name" >&2; return 1; }
+  local current scale
+  current=$(hyprctl monitors -j | jq -r --arg o "$OUTPUT" '.[] | select(.name == $o) | "\(.transform) \(.scale)"')
+  [[ -n $current ]] || return 0
+  scale=${current#* }
+  [[ $scale =~ ^[0-9.]+$ ]] || scale=auto
+  [[ ${current%% *} == "$t" ]] && return 0
+  hyprctl eval "hl.monitor({ output = \"$OUTPUT\", mode = \"preferred\", position = \"auto\", scale = $scale, transform = $t })" >/dev/null
+  # Touch and pen follow the screen.
+  hyprctl eval "hl.config({ input = { touchdevice = { transform = $t, output = \"$OUTPUT\" }, tablet = { transform = $t, output = \"$OUTPUT\" } } })" >/dev/null
+}
+
+keyboard() {
+  local pid
+  pid=$(pgrep -u "$USER" -x "$KEYBOARD" | head -1)
+  case ${1:-toggle} in
+    show)
+      if [[ -n $pid ]]; then kill -USR2 "$pid"
+      elif command -v "$KEYBOARD" >/dev/null; then setsid -f "$KEYBOARD" "${KEYBOARD_ARGS[@]}" >/dev/null 2>&1
+      fi ;;
+    hide) [[ -n $pid ]] && kill -USR1 "$pid" ;;
+    toggle)
+      if [[ -n $pid ]]; then kill -RTMIN "$pid"; else keyboard show; fi ;;
+    quit) [[ -n $pid ]] && kill "$pid" ;;
+  esac
+  return 0
+}
+
+case ${1:-status} in
+  on)
+    touch "$FLAG"
+    [[ -s $ORIENT ]] && rotate "$(cat "$ORIENT")"
+    keyboard show
+    omarchy-shell -q tablet.keyboard refresh
+    ;;
+  off)
+    rm -f "$FLAG"
+    rotate normal
+    keyboard quit
+    omarchy-shell -q tablet.keyboard refresh
+    ;;
+  daemon)
+    command -v monitor-sensor >/dev/null || { echo "monitor-sensor not found (sudo pacman -S iio-sensor-proxy)" >&2; exit 1; }
+    # One daemon per session.
+    exec 9>"$RUN/daemon.lock"
+    flock -n 9 || exit 0
+    monitor-sensor --accel 9>&- | while IFS= read -r line; do
+      o=""
+      [[ $line =~ orientation\ changed:\ ([a-z-]+) ]] && o=${BASH_REMATCH[1]}
+      [[ $line =~ \(orientation:\ ([a-z-]+)\) ]] && o=${BASH_REMATCH[1]}
+      [[ -n $o && $o != undefined ]] || continue
+      echo "$o" >"$ORIENT"
+      [[ -e $FLAG ]] && rotate "$o"
+    done
+    ;;
+  rotate) rotate "${2:?orientation}" ;;
+  keyboard) keyboard "${2:-toggle}" ;;
+  status)
+    echo "mode: $([[ -e $FLAG ]] && echo tablet || echo laptop)"
+    echo "orientation: $(cat "$ORIENT" 2>/dev/null || echo unknown)"
+    echo "daemon: $(pgrep -u "$USER" -f 'tablet-mode daemon' >/dev/null && echo running || echo stopped)"
+    echo "keyboard: $(pgrep -u "$USER" -x "$KEYBOARD" >/dev/null && echo running || echo off)"
+    ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

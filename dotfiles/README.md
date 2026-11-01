@@ -20,6 +20,9 @@ git clone https://github.com/jeremystevens/omarch-rice ~/omarch-rice
 | `packages/pacman.txt` | Packages I add on top of Omarchy's own |
 | `packages/uv-tools.txt` | Python CLIs installed with `uv tool install` |
 | `system/keyd/default.conf` | Chromebook keyboard: the missing keys on a right-Alt layer (copied to `/etc/keyd`, not linked) |
+| `system/libinput/local-overrides.quirks` | Keeps "ignore the touchpad while typing" working with keyd (copied to `/etc/libinput`) |
+| `home/.local/bin/tablet-mode`, `home/.config/hypr/tablet.lua` | Tablet mode: auto-rotate and on-screen keyboard when the screen is folded back |
+| `home/.config/omarchy/plugins/tablet.keyboard/` | Bar button that shows or hides the on-screen keyboard (only in tablet mode) |
 
 Only files I've actually changed are here. Everything still at Omarchy's defaults (starship, tmux, nvim,
 terminals, btop) is left to Omarchy, so its updates keep working. Hyprland, the bar and the theme are
@@ -33,6 +36,7 @@ handled by [NEXUS](../nexus-omarchy).
 | `tools` | `mise install`, then the uv tools |
 | `fonts` | Symbola (the symbol font Doom Emacs asks for), checksum-verified |
 | `keyd` | Chromebook only (`--chromebook`, or name the step): installs keyd and its config, see below |
+| `tablet` | Chromebook only: installs iio-sensor-proxy and wvkbd (AUR), hooks tablet mode into Hyprland, adds the bar button |
 | `doom` | Clones and installs Doom Emacs if missing, otherwise `doom sync` |
 | `nexus` | Runs `../nexus-omarchy/install.sh` (`--chromebook` is passed on) |
 | `aiterm` | Runs `../ai-terminal-companion/install.sh` |
@@ -62,6 +66,21 @@ The Acer Spin 13 keyboard has no Delete, Home, End, Page Up/Down, F11 or F12. Ho
 Shift and Ctrl still combine (Shift + right Alt + → selects to the end of the line); left Alt is unchanged.
 Search + arrows stay with Hyprland. After editing the config: `./bootstrap.sh keyd` (or `sudo keyd reload`).
 If the keyboard ever stops responding, press Backspace + Escape + Enter together to stop keyd.
+
+keyd types through its own virtual keyboard, which libinput doesn't treat as built-in, so it would stop
+ignoring the touchpad while you type (the pointer jumps when a palm brushes it). The keyd step also
+installs a libinput override, from keyd's README, that fixes this.
+
+## Tablet mode
+Fold the screen back and the Spin 13 turns into a tablet:
+
+- The screen rotates with the device, and touch and pen follow it. In laptop mode it never rotates.
+- An on-screen keyboard (wvkbd, in NEXUS colours) appears; a keyboard button in the bar shows or hides it.
+- Unfold and everything goes back to normal.
+
+`tablet-mode status` shows the current state; `tablet-mode rotate normal` straightens the screen by
+hand. Hyprland can't tell whether the screen is already folded when you log in, so a session starts
+in laptop mode and catches up at the next fold or unfold.
 
 ## Day to day
 Because the files are symlinks, editing `~/.config/doom/config.el` edits this repo. `git status` in

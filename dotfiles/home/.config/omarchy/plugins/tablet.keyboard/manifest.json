@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "tablet.keyboard",
+  "name": "On-screen keyboard",
+  "version": "1.0.0",
+  "author": "nitestryker",
+  "description": "Shows or hides the on-screen keyboard; only visible in tablet mode",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "On-screen keyboard",
+    "description": "Shows or hides the on-screen keyboard; only visible in tablet mode",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

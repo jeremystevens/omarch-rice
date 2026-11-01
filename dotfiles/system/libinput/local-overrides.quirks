@@ -1,0 +1,8 @@
+# Treat keyd's virtual keyboard as the built-in keyboard, so libinput still ignores the
+# touchpad while you type (otherwise a palm on the touchpad moves the pointer mid-typing).
+# From keyd's README. Installed to /etc/libinput/local-overrides.quirks by `bootstrap.sh keyd`.
+
+[Serial Keyboards]
+MatchUdevType=keyboard
+MatchName=keyd virtual keyboard
+AttrKeyboardIntegration=internal

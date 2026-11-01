@@ -9,7 +9,8 @@
 # Steps:
 #   packages  pacman packages from packages/pacman.txt (asks for your sudo password)
 #   link      symlink everything in home/ into ~, keep name/email in ~/.gitconfig,
-#             add a block to ~/.bashrc that loads ~/.config/bash/dotfiles.bash
+#             add a block to ~/.bashrc that loads ~/.config/bash/dotfiles.bash and one to
+#             hyprland.lua that loads hypr/rules.lua (window rules)
 #   tools     mise tools (~/.config/mise/config.toml) and uv tools (packages/uv-tools.txt)
 #   fonts     Symbola, the symbol fallback font Doom Emacs asks for
 #   keyd      Chromebook keys: Delete, Home, End, PgUp/PgDn, F11/F12 on a right-Alt layer
@@ -44,7 +45,7 @@ for arg in "$@"; do
   case $arg in
     --dry-run) dry=1 ;;
     --chromebook) chromebook=1 ;;
-    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     status) mode=status ;;
     adopt) mode=adopt ;;
     -*) echo "Unknown option: $arg" >&2; exit 1 ;;
@@ -138,6 +139,7 @@ step_link() {
   while IFS= read -r rel; do link_one "$rel"; done < <(tracked)
   ensure_git_identity
   bashrc_block
+  add_block "Window rules" "$HOME/.config/hypr/hyprland.lua" "--" 'require("hypr.rules")'
   ((backed_up)) && note "replaced files are in $BACKUP"
   return 0
 }

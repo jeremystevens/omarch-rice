@@ -94,6 +94,16 @@ Switch themes with `omarchy theme set <name>` and everything changes together:
   `doom-one` (or `doom-one-light` for light themes). The `theme-set.d/doom-emacs` hook makes an open
   Emacs do it straight away; `M-x +omarchy-apply-colors` does the same by hand.
 
+## Private files (USB backup)
+Keys, git identity, aiterm's server addresses, NEXUS notes and shell history never go in this repo.
+`./private-backup.sh` packs them into one gpg-encrypted archive (you pick the password) to keep on a USB stick:
+```bash
+./private-backup.sh /run/media/$USER/USB      # or no argument: ~/omarchy-private-<date>.tar.zst.gpg
+./private-backup.sh list FILE                 # what's inside
+./private-backup.sh restore FILE              # on the new machine, after bootstrap.sh; then gh auth login
+```
+Restore keeps any file it would overwrite as `name.~1~`.
+
 ## Day to day
 Because the files are symlinks, editing `~/.config/doom/config.el` edits this repo. `git status` in
 `~/omarch-rice` shows what changed; commit when you're happy with it.

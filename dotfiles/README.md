@@ -37,6 +37,7 @@ handled by [NEXUS](../nexus-omarchy).
 | `link` | Symlinks everything in `home/` into `~`, moves git name/email/credentials to `~/.gitconfig` (asks on a new machine), adds a marked block to `~/.bashrc` |
 | `tools` | `mise install`, then the uv tools |
 | `fonts` | Symbola (the symbol font Doom Emacs asks for), checksum-verified |
+| `power` | Laptops: power-saver profile on battery. Omarchy already switches profiles when you plug in or unplug; this only changes its battery default, and only if you haven't picked one |
 | `keyd` | Chromebook only (`--chromebook`, or name the step): installs keyd and its config, see below |
 | `doom` | Clones and installs Doom Emacs if missing, otherwise `doom sync` |
 | `nexus` | Runs `../nexus-omarchy/install.sh` (`--chromebook` is passed on) |

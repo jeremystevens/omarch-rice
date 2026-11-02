@@ -13,6 +13,8 @@
 #             hyprland.lua that loads hypr/rules.lua (window rules)
 #   tools     mise tools (~/.config/mise/config.toml) and uv tools (packages/uv-tools.txt)
 #   fonts     Symbola, the symbol fallback font Doom Emacs asks for
+#   power     laptops: use the power-saver profile on battery (Omarchy switches profiles when
+#             you plug in or unplug; this only changes its battery default)
 #   keyd      Chromebook keys: Delete, Home, End, PgUp/PgDn, F11/F12 on a right-Alt layer
 #             (system/keyd/default.conf → /etc/keyd; full runs only with --chromebook)
 #   doom      install Doom Emacs if it's missing, then doom sync
@@ -37,7 +39,7 @@ REPO=$(cd "$(dirname "$0")" && pwd)
 RICE=$(dirname "$REPO")
 FILES=$REPO/home
 BACKUP=$HOME/.local/share/dotfiles/backup-$(date +%Y%m%d-%H%M%S)
-ALL_STEPS=(packages link tools fonts keyd doom nexus tablet aiterm)
+ALL_STEPS=(packages link tools fonts power keyd doom nexus tablet aiterm)
 
 dry=0 chromebook=0 steps=() adopt=()
 mode=steps
@@ -219,6 +221,20 @@ step_fonts() {
   rm -rf "$tmp"
   fc-cache -f "$dir" >/dev/null
   note "installed to $dir"
+}
+
+step_power() {
+  say "Battery power profile"
+  if ! omarchy battery present 2>/dev/null; then note "no battery; skipped"; return; fi
+  # Omarchy remembers one profile for battery and one for AC. Only fill in the battery one
+  # if it was never chosen, so a choice made later from the power menu sticks.
+  local state=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/powerprofiles/battery
+  if [[ -s $state ]]; then note "battery profile already set: $(<"$state")"; return; fi
+  if ((dry)); then note "would use power-saver on battery"; return; fi
+  mkdir -p "$(dirname "$state")"
+  echo power-saver >"$state"
+  omarchy powerprofiles set autodetect
+  note "power-saver on battery; $(powerprofilesctl get) now"
 }
 
 step_keyd() {
